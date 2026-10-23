@@ -3383,8 +3383,9 @@ class _SettingUp:
     deciding whether to ask about its bridge...) — all of which can take a while, during which control_active()
     must already read as busy, or a second command said in that window could start a second, colliding task."""
     state = "starting"
+    stopped = False
 
-    def stop(self): pass
+    def stop(self): self.stopped = True   # the task built after setup is stopped before it runs
     def pause(self): pass
     def resume(self): pass
 
@@ -3797,7 +3798,10 @@ def start_computer_task(goal: str, scripted=None, after=None, persistent: bool =
         # Busy from here on, even before there's a real task object — resolving the goal, launching Blender and
         # deciding whether to ask about its bridge can all take a while, and control_active() must say so
         # throughout, or a command said in that window could start a second, colliding task (see _SettingUp).
-        computer_task = _SettingUp()
+        setting_up = computer_task = _SettingUp()
+        # Setting up can take many seconds (Blender's bridge, the screen reader): without this the window and the
+        # overlay still said "Ready" while a second command was turned away with "Still working on that".
+        report({"state": "starting", "detail": "Getting ready…", "goal": goal, "step": 0, "maxSteps": 0})
         # Anything below can legitimately fail (a slow/missing Blender, a Windows file-sharing hiccup, a platform
         # quirk) — none of that may crash this thread silently and strand the session: catch everything, report
         # it in plain words, and keep listening. See the user's own "don't lose control because of errors" ask.
@@ -3859,6 +3863,8 @@ def start_computer_task(goal: str, scripted=None, after=None, persistent: bool =
                                                  finish_after=finishing_actions(goal), **CLOSED_LOOP)
 
             if task is not None:
+                if setting_up.stopped:   # cancelled while it was being set up
+                    task.stop()
                 computer_task = task
                 # the window steps aside (see main.js), showing Blender (or the app) being worked on
                 task._report("starting", "Starting the build…" if bridge_only else "Getting out of your way…")

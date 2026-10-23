@@ -549,6 +549,25 @@ def test_stop_said_during_a_task_in_a_session_cancels_the_task_but_keeps_control
     assert "cancelling" in states and states[-1] == "listening"   # the overlay and sidebar stay "in control"
 
 
+def test_a_task_shows_as_starting_while_it_is_set_up_and_a_cancel_then_stops_it(monkeypatch, clean):
+    """Setting up a Blender goal took 13 s (2026-10-23) while the panel and overlay still said "Ready", and a second
+    try was told "Still working on that"."""
+    monkeypatch.setenv("JARVIS_COMPUTER_CONTROL", "on")
+    bridge, gate = _FakeBlenderBridge(), threading.Event()
+    monkeypatch.setattr(app.blender_control, "ensure_bridge", lambda session, confirm: gate.wait(4) and bridge)
+    monkeypatch.setattr(app.computer_use.ControlSession, "blender_in_front", lambda self: True)
+    app.handle_direct_command("take control of my computer")
+    assert _wait(app.session_active)
+    app.start_computer_task("create a cube", persistent=True)
+    assert _wait(lambda: clean[-1]["data"]["state"] == "starting")
+    assert clean[-1]["data"]["goal"] == "create a cube" and clean[-1]["data"]["session"] is True
+    assert app.cancel_control_task()
+    gate.set()
+    assert _wait(lambda: app.computer_task.state == "stopped")
+    assert app.session_active() and clean[-1]["data"]["state"] == "listening"
+    assert not any("primitive_cube_add" in code for code in bridge.calls)   # cancelled before it touched Blender
+
+
 def test_release_control_during_a_task_ends_the_task_and_the_session(monkeypatch, clean):
     gate = _session_with_a_running_task(monkeypatch)
     assert app.handle_control_voice("release control") == "Stopping. You have control."
