@@ -1032,6 +1032,8 @@ _REAL_WORDS = {"point", "print", "plant", "place", "pole", "poll", "pull", "bath
                "past", "paste", "patch", "pooh", "hours", "house", "movie", "moved", "mover", "garter", "bigger",
                "builder", "delay", "deleted", "removal", "widow", "window", "windows", "linger", "select", "scenes",
                "scones", "shrimp", "expend", "lighter", "lightly", "villain", "villas", "garbage", "blend", "blends", "plain", "readme"}
+# "crate a realistic villa": before "a"/"an"/a number "crate" is the verb "create" mistyped; "the crate", "to Crate" stay.
+_CRATE_VERB = re.compile(r"\b([Cc])rate(?= (?:a|an|another|some|one|two|three|four|five|\d+)\b)")
 
 
 def fix_typos(text: str) -> str:
@@ -1044,7 +1046,7 @@ def fix_typos(text: str) -> str:
         close = difflib.get_close_matches(low, _VOCABULARY, n=1, cutoff=0.8)
         # a slip of a key or two, never a different word ("small" isn't "smaller", "reminder" isn't "render")
         return close[0] if close and close[0][0] == low[0] and abs(len(close[0]) - len(low)) <= 1 else word
-    return re.sub(r"[A-Za-z]+", fix, text or "")
+    return _CRATE_VERB.sub(r"\1reate", re.sub(r"[A-Za-z]+", fix, text or ""))
 
 
 def normalize(text: str) -> str:

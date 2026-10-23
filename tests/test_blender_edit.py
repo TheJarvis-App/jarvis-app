@@ -115,7 +115,9 @@ def test_one_object_commands_stay_with_the_older_verified_commands(text):
 @pytest.mark.parametrize("typed, meant", [("delite evrything in bender", "delete everything in blender"),
                                           ("make the pool beter", "make the pool better"),
                                           ("creat a vila", "create a villa"),
-                                          ("add a pathh to the pool", "add a path to the pool")])
+                                          ("add a pathh to the pool", "add a path to the pool"),
+                                          ("crate a realistic villa", "create a realistic villa"),
+                                          ("Crate two cubes", "Create two cubes")])
 def test_typos_in_blender_words_are_fixed(typed, meant):
     assert blender_commands.fix_typos(typed) == meant
 
@@ -123,9 +125,15 @@ def test_typos_in_blender_words_are_fixed(typed, meant):
 @pytest.mark.parametrize("text", ["point the camera at the cube", "build a small house", "set a reminder",
                                   "make the cube 4 meters wide",
                                   "Answer in plain words.", "open README.md", "the garbage is full",
-                                  "Check the internet connection"])
+                                  "Check the internet connection", "rename the cube to Crate", "put the crate on the table",
+                                  "crate it up"])
 def test_real_words_are_never_corrected_into_commands(text):
     assert blender_commands.fix_typos(text) == text
+
+
+def test_a_mistyped_create_still_builds_the_villa():
+    """"crate a realistic villa" (2026-10-23) got "I'm not sure what you'd like me to do there" instead of a build."""
+    assert blender_build.parse(blender_commands.normalize("crate a realistic villa")) is not None
 
 
 # ---------- "it" ----------

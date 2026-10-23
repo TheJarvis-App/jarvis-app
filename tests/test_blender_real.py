@@ -450,7 +450,8 @@ _STATUE = (FRESH + "statue = add_sphere('My statue', 1.0, (0, 0, 0))\npaint(stat
 
 
 @pytest.mark.parametrize("text", ["create a villa", "build a cozy cottage", "build a traditional villa with a garden",
-                                  "build me a modern three storey mansion with a pool and a garage"])
+                                  "build me a modern three storey mansion with a pool and a garage",
+                                  "crate a realistic villa"])
 def test_a_building_request_builds_the_whole_building_and_checks_it_in_blender(bridge, text):
     kit(bridge, _STATUE)
     task, reply, _, _ = _build(bridge, text)
