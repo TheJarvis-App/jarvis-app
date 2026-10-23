@@ -590,7 +590,7 @@ def test_take_control_asks_which_version_before_permission_and_carries_on(monkey
     monkeypatch.setattr(app, "start_computer_task", lambda goal, **k: started.append(goal) or real_start(goal, **k))
     monkeypatch.setenv("JARVIS_COMPUTER_CONTROL", "ask")
     monkeypatch.setattr(app, "computer_environment", lambda: SimpleNamespace(available=lambda: (True, "")))
-    monkeypatch.setattr(app, "open_control_question", lambda question, kind="computer": "q1")
+    monkeypatch.setattr(app, "open_control_question", lambda question, permission=False: "q1")
     monkeypatch.setattr(app, "wait_control_answer", lambda ask_id, timeout=90.0: False)   # (answered "no" here)
     assert route("take control of my computer and open Blender")[0] == "Which one should I open: Blender 4.3 or Blender 4.5?"
     assert route("4.5")[0] == "Can I use your mouse and keyboard to open Blender 4.5? Say yes or no."

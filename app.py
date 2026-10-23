@@ -3517,13 +3517,13 @@ def _ask_ai_for_control(messages, tools):
         raise computer_use.AIError(groq_error_reply(e)) from e
 
 
-def open_control_question(question: str) -> str:
+def open_control_question(question: str, permission: bool = False) -> str:
     """Show a yes/no question in the window and listen for "yes"/"no". Returns its id for wait_control_answer.
     Also shown in a connected phone's chat, where typing "yes"/"no" answers it the same way."""
     global pending_control_question
     ask_id = f"q{int(time.time() * 1000)}"
     _control_questions[ask_id] = (threading.Event(), {"answer": None})
-    pending_control_question = {"id": ask_id, "at": time.time()}
+    pending_control_question = {"id": ask_id, "at": time.time(), "permission": permission}
     send_ui_update_once({"type": "control_confirm", "id": ask_id, "question": question})
     mirror_to_phone({"type": "chat", "sender": "ai", "text": f"{question} (yes / no)"})
     return ask_id
@@ -3771,7 +3771,7 @@ def start_computer_task(goal: str, scripted=None, after=None, persistent: bool =
                 blender_open = value
 
     question = "Can I use your mouse and keyboard?" if bare else f"Can I use your mouse and keyboard to {goal}?"
-    ask_id = open_control_question(question) if (mode != "on" and not already_active) else None
+    ask_id = open_control_question(question, permission=True) if (mode != "on" and not already_active) else None
 
     def report(state: dict) -> None:
         # Between goals in a persistent session, "completed"/"error" would read (and look, in the overlay) as
@@ -3911,7 +3911,10 @@ def handle_control_voice(text: str):
     n = re.sub(r"^(?:(?:hey|ok|okay) )?(?:jarvis|jervis) ", "", n)   # "Hey Jarvis, stop"
     if pending_control_question and time.time() - pending_control_question["at"] < 120:
         if _YES.fullmatch(n) and answer_control_question(pending_control_question["id"], True):
+            permission = pending_control_question.get("permission")
             pending_control_question = None
+            if not permission:   # "delete everything?" and other questions mid-task: the task itself reports next
+                return "Okay."
             return (f"Okay. Move the mouse, press {computer_use.STOP_SHORTCUT}, or say stop "
                     "whenever you want to take over.")
         if _NO.fullmatch(n) and answer_control_question(pending_control_question["id"], False):

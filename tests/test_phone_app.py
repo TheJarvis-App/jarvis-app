@@ -142,9 +142,14 @@ def test_no_text_is_attempted_when_twilio_is_not_configured(monkeypatch):
 
 
 def test_yes_after_a_computer_control_confirmation_still_gives_the_original_reply():
-    app.open_control_question("Can I use your mouse and keyboard?")
+    app.open_control_question("Can I use your mouse and keyboard?", permission=True)
     reply = app.handle_control_voice("yes")
     assert "Move the mouse" in reply
+
+
+def test_yes_to_a_question_in_the_middle_of_a_task_does_not_talk_about_the_mouse():
+    app.open_control_question("Delete everything in the Blender scene (pool, villa)?")
+    assert app.handle_control_voice("yes") == "Okay."
 
 
 # ---------- sessions: "connect my phone" once a phone is already paired (needs a relay configured) ----------
