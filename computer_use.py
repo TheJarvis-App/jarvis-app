@@ -272,6 +272,7 @@ Rules:
 - Browsers: ctrl+l (cmd+l on a Mac) focuses the address bar; type a search or address and press enter.
 - If a popup, cookie banner or dialog appears, deal with it or dismiss it before continuing.
 - If your last action changed nothing, don't repeat it: try something different (another element, a shortcut, wait).
+- type_text's text is only the words that should appear on screen: never JSON, element numbers or other arguments.
 - Never type passwords, payment details or personal data the user didn't give you.
 - When the goal is achieved, call done with a one-sentence summary. If it truly can't be done, call fail.
 - The screen not matching the goal yet (wrong text, wrong page) is your job to change, never a reason to fail.
@@ -412,6 +413,103 @@ def tidy_summary(text, fallback: str, max_len: int = 200) -> str:
     return text[:max_len]
 
 
+# A small model's own call written into the text it types: {"element": 1, "text": "milk"}, a tool's name, or a line of
+# the prompt echoed back ("[3] document “Text editor”"). Seen for real: Notepad ended up holding these.
+_ARGUMENT_KEYS = (r"element|to_element|text|press_enter|append|keys|title|name|seconds|direction|summary|reason|"
+                  r"question|description|action|arguments|parameters|function|tool_calls|code")
+LEAKED_SYNTAX = [
+    re.compile(rf"\{{\s*[\"']?(?:{_ARGUMENT_KEYS})[\"']?\s*:|[\"'](?:{_ARGUMENT_KEYS})[\"']\s*:", re.I),
+    re.compile(r"\b(?:type_text|press_keys|open_app|switch_window|double_click|right_click|ask_user|click_on|"
+               r"run_python|tool_calls?)\b", re.I),
+    re.compile(r"\[\d+\]\s+(?:button|link|document|text field|search field|text area|combo box|menu item|tab|"
+               r"list item|check box)\b|Result of your last action|Your steps so far|Reply with one tool call", re.I),
+]
+
+
+def leaked_syntax(text: str, goal: str = "") -> str:
+    """The piece of `text` that is the AI's own call syntax or prompt rather than words for the screen, or "".
+    What the user's goal itself contains (they asked for JSON to be typed) doesn't count."""
+    for pattern in LEAKED_SYNTAX:
+        found = pattern.search(text or "")
+        if found and not pattern.search(goal or ""):
+            return found.group(0)
+    return ""
+
+
+def _norm(text: str) -> str:
+    """Text compared the way a person reads it: case, curly quotes and spacing don't matter."""
+    text = (text or "").translate(str.maketrans("“”‘’ ", "\"\"'' ")).casefold()
+    return " ".join(text.split())
+
+
+# What a text-entry goal asks to appear: "write a shopping list: milk, eggs, bread", "type “hello there” in Notepad",
+# "open Notepad and type hello world". Anything after "then ..."/"and save ..." is another step, checked by the AI.
+_QUOTED = re.compile(r"[“\"]([^”\"]+)[”\"]|(?<!\w)'([^']+)'(?!\w)")
+_COLON_TEXT = re.compile(r"\b(?:write|type|jot|note|put|enter|add|make|create)\b[^:]{0,60}:\s*(.+)$", re.I | re.S)
+_TYPE_TEXT = re.compile(r"\btype\s+(?!in\b|into\b|it\b|the text\b)(.+?)(?:\s+(?:in|into|on)\s+(?:the\s+)?"
+                        r"[A-Za-z][\w ]{0,30}?(?:\s+(?:app|window))?)?\s*[.!]?$", re.I | re.S)
+_MORE_STEPS = re.compile(r"\s*(?:,\s*)?\b(?:and then|then|and (?:save|close|send|print|press|email|share))\b.*$",
+                         re.I | re.S)
+
+
+def requested_text(goal: str):
+    """(pieces, whole) for a goal that says what text to type: each piece must appear once, in any layout; `whole`
+    is False when the goal also asks for something after the typing. None otherwise ("write a poem" says what to
+    write about, not the words)."""
+    goal = (goal or "").strip()
+    quoted = [a or b for a, b in _QUOTED.findall(goal)]
+    if quoted:
+        rest = _QUOTED.sub("", goal)
+        return quoted, not _MORE_STEPS.search(rest)
+    cut = _MORE_STEPS.search(goal)
+    head = goal[:cut.start()] if cut else goal
+    match = _COLON_TEXT.search(head) or _TYPE_TEXT.search(head)
+    if not match:
+        return None
+    whole = cut is None
+    said = match.group(1).strip().rstrip(".!")
+    if match.re is _TYPE_TEXT:
+        return ([said], whole) if said else None
+    pieces = [p.strip().rstrip(".") for p in re.split(r"\s*(?:[,;\n]|\band\b)\s*", said)]
+    pieces = [p for p in pieces if p]
+    return (pieces, whole) if pieces else None
+
+
+def text_problem(goal: str, before: str, now: str):
+    """Whether a field's text now holds what the goal asked to type, judged on what was added to it (`before` is its
+    text before Jarvis typed). (problem for the AI, problem for the user), or None when it's right."""
+    added = now if not before or before not in now else now.replace(before, "", 1)
+    shown = " ".join(added.split())
+    shown = f"“{shown[:80]}{'…' if len(shown) > 80 else ''}”"
+    leak = leaked_syntax(added, goal)
+    if leak:
+        return (f"the text now reads {shown}: it has call syntax ({leak}) typed into it. Type only the words that "
+                "should appear.", "the text in the app got mixed up with my own instruction code")
+    wanted = requested_text(goal)
+    if wanted is None:
+        return None
+    pieces = wanted[0]
+    have, goal_words = _norm(added), set(re.findall(r"[^\W_]+", _norm(goal)))
+    if not have:
+        return "nothing has been typed into it yet.", "nothing got typed"
+    missing = [p for p in pieces if _norm(p) not in have]
+    if missing:
+        return (f"the text now reads {shown}, which is missing: {', '.join(missing)}.",
+                f"it's missing {', '.join(missing)}")
+    twice = [p for p in pieces if have.count(_norm(p)) > _norm(goal).count(_norm(p))]
+    if twice:
+        return (f"the text now reads {shown}: {', '.join(twice)} is in it more than once.",
+                f"{', '.join(twice)} got typed more than once")
+    rest = have
+    for p in sorted(pieces, key=len, reverse=True):
+        rest = rest.replace(_norm(p), " ")
+    extra = [w for w in re.findall(r"[^\W_]+", rest) if w not in goal_words]
+    if extra:
+        return (f"the text now reads {shown}, with words that weren't asked for: {' '.join(extra[:6])}.",
+                "the app has extra text I didn't mean to type")
+    return None
+
+
 def _first_json_object(text: str):
     """The first JSON object in `text` (line breaks inside its strings allowed) — or, failing that, the first
     Python-style dict ({'name': 'x', 'arguments': {'color': (1, 0, 0)}}, which small models also write). None if
@@ -497,6 +595,27 @@ def _fenced_code(text: str):
     m = _FENCED.search(text)
     code = m.group("code").strip() if m else ""
     return code if "bpy" in code else None
+
+
+def _written_calls(text: str, tools: list) -> list:
+    """Calls a small model wrote as lines of `tool_name {json}` instead of tool calls, often several at once:
+    open_app {"name": "Notepad", "arguments": {}} / type_text {"text": "milk", "press_enter": true}. [(name, args)];
+    a call whose JSON doesn't close (an answer cut off) ends the list."""
+    names = {t["function"]["name"] for t in tools}
+    calls = []
+    for m in re.finditer(r"(?m)^[ \t]*(?:\d+[.)][ \t]*)?(\w+)[ \t]*[:(]?[ \t]*\n?[ \t]*(?=\{)", text):
+        if m.group(1) not in names:
+            continue
+        end = _closing_brace(text, m.end())
+        given = _first_json_object(text[m.end():end + 1]) if end else None
+        if not isinstance(given, dict):
+            break
+        for wrapper in ("arguments", "parameters"):   # {"name": "Notepad", "arguments": {}}: the call's own wrapper
+            inner = given.pop(wrapper, None)
+            if isinstance(inner, dict):
+                given.update(inner)
+        calls.append((m.group(1), given))
+    return calls
 
 
 def _arguments(name: str, given, tools: list):
@@ -656,6 +775,8 @@ class ComputerTask:
         self._target = None             # what is being acted on, for the window: {"rect", "screen"}
         self._kind = ""                 # the kind of action being carried out (see _settle)
         self._grabbed = False           # the user took the mouse while the AI was thinking (see _ask)
+        self._typed = {}                # (role, name) of each field typed into -> its text before the first typing
+        self._typed_last = None         # the one typed into last: what a text goal is checked against
 
     # ---------- control from outside (voice, the window, the emergency shortcut) ----------
     def stop(self):
@@ -840,9 +961,10 @@ class ComputerTask:
                         self.history.append(("(said done)", doubt))
                         last_change = doubt
                         continue
-                    if self.verified is False:
-                        return self._finish("completed", f"{action.get('summary') or 'Done.'} But I couldn't "
-                                                         f"confirm it on screen: {self._doubt}")
+                    if self.verified is False:   # never reported as success
+                        return self._finish("error", f"I couldn't get that done properly: "
+                                                     f"{self._doubt.rstrip('.')}. So I stopped. You have control "
+                                                     "again.")
                     return self._finish("completed", action.get("summary") or "Done.")
                 if kind == "fail":
                     return self._finish("error", action.get("reason") or "I couldn't do that.")
@@ -1063,9 +1185,11 @@ class ComputerTask:
         return [step for step in cleaned if step][:6]
 
     def _check_done(self, summary: str) -> str:
-        """With `verify`: "" when "done" can be believed, else what is still missing (sent back to the AI). The
-        screen is checked by a separate question, judged only on what is visible now. After MAX_DONE_REFUSALS
-        disagreements it is accepted, and reported as not confirmed (self.verified False)."""
+        """With `verify`: "" when "done" can be believed, else what is still missing (sent back to the AI). Text
+        Jarvis typed is read back from the app itself and compared with what the goal asked for (see text_problem);
+        a goal that is only that typing is settled by it. Anything else is checked by a separate question, judged
+        only on what is visible now. After MAX_DONE_REFUSALS disagreements the task ends unconfirmed
+        (self.verified False), which run() reports as a failure."""
         if not self.verify:
             return ""
         if self._last_status == "failed" and self._done_refusals == 0:
@@ -1074,6 +1198,14 @@ class ComputerTask:
         self._report("verifying", "Checking the result on screen…")
         observation = self.env.observe()
         self._seen(observation)
+        checked = self._check_text(observation)
+        if checked:
+            return self._refuse(*checked)
+        wanted = requested_text(self.goal)
+        if checked is not None and wanted and wanted[1]:   # the goal is only that typing: its text settles it
+            self.verified = True
+            self._note("Check the result", "ok", "The text in the app is exactly what you asked for.")
+            return ""
         lines = [f"Goal: {self.goal}", f"The assistant says: {summary}",
                  f"In front now: {observation.app or 'unknown app'} — window “{observation.window}”", "Elements:"]
         lines.extend(e.describe() for e in observation.elements[:80])
@@ -1090,20 +1222,35 @@ class ComputerTask:
         if isinstance(achieved, str):
             achieved = {"true": True, "yes": True, "false": False, "no": False}.get(achieved.strip().lower())
         evidence = tidy_summary((args or {}).get("evidence"), "")
-        if achieved is not True and achieved is not False:
-            self._note("Check the result", "checked", "The check gave no clear answer.")
-            return ""   # self.verified stays None: done, but not confirmed either way
-        if achieved:
+        if achieved is True:
             self.verified = True
             self._note("Check the result", "ok", evidence or "The screen shows it's done.")
             return ""
+        if achieved is not False:   # no clear answer is no confirmation either
+            evidence = "the check of the screen gave no clear answer."
+        return self._refuse(f"a check of the screen says {evidence or 'it does not show the goal achieved.'}",
+                            evidence or "the screen doesn't show it done.")
+
+    def _refuse(self, for_ai: str, for_user: str) -> str:
+        """A "done" the check doesn't confirm: sent back to the AI with what's wrong, until MAX_DONE_REFUSALS."""
         self._done_refusals += 1
-        self._note("Check the result", "failed", evidence or "The screen doesn't show it done yet.")
+        self._note("Check the result", "failed", for_user)
         if self._done_refusals > MAX_DONE_REFUSALS:
-            self.verified, self._doubt = False, evidence or "the screen doesn't show it."
+            self.verified, self._doubt = False, for_user
             return ""
-        return (f"Not done yet: a check of the screen says {evidence or 'it does not show the goal achieved.'} "
-                "Keep going, or call fail if it can't be done.")
+        return f"Not done yet: {for_ai} Keep going, or call fail if it can't be done."
+
+    def _check_text(self, observation: Observation):
+        """The field typed into last, read fresh from the app: (what's wrong for the AI, for the user), None when
+        it can't be read (nothing typed, or the app doesn't expose its text), or () when it holds the right text."""
+        if self._typed_last is None:
+            return None
+        fields = [e for e in observation.elements if (e.role, e.name) == self._typed_last]
+        field = next((e for e in fields if e.focused), fields[0] if fields else None)
+        now = self.env.read_value(field) if field is not None and not field.password else None
+        if now is None:
+            return None
+        return text_problem(self.goal, self._typed[self._typed_last], now) or ()
 
     def _tool_answer(self, messages, tool):
         """The arguments of the AI's call of this one tool (or of the same thing written as JSON text); None if
@@ -1157,21 +1304,21 @@ class ComputerTask:
         response = self._ask(messages, tools)
         message = response.choices[0].message
         calls = getattr(message, "tool_calls", None) or []
+        text = (getattr(message, "content", "") or "").strip()
+        calls = [(c.function.name, c.function.arguments or "{}") for c in calls] or _written_calls(text, tools)
         self._queued = []
         if calls:
             decided = []
-            for call in calls[:self.max_batch]:
-                name = call.function.name
-                args = _arguments(name, call.function.arguments or "{}", tools)
+            for name, given in calls[:self.max_batch]:
+                args = _arguments(name, given, tools)
                 if args is None:
-                    decided.append(({"action": name, "_bad_json": True}, f"{name}({call.function.arguments})"))
+                    decided.append(({"action": name, "_bad_json": True}, f"{name}({given})"))
                     break
                 decided.append(({"action": name, **args}, f"{name}({json.dumps(args)[:100]})"))
                 if name in ("done", "fail", "ask_user"):
                     break
             self._queued = decided[1:]
             return decided[0]
-        text = (getattr(message, "content", "") or "").strip()
         # Small local models sometimes write the call as JSON text instead of a tool call — often with the code
         # as a bare string ({"name": "run_python", "parameters": "import bpy..."}), raw line breaks inside its
         # strings, or a second call glued on after it. The first object is the call.
@@ -1212,6 +1359,10 @@ class ComputerTask:
         name, said = match.group(1), match.group(2).strip()
         bare = said.strip("\"'“”")
         fields = {"press_keys": "keys", "open_app": "name", "switch_window": "title", "type_text": "text"}
+        if name in fields and said.startswith("{"):   # type_text {"element": 1, "text": "milk"}: the call's own JSON
+            given = _first_json_object(said)
+            if isinstance(given, dict) and isinstance(given.get(fields[name]), str):
+                return {"action": name, **given}
         if name in fields and bare:
             return {"action": name, fields[name]: bare}
         if name in ("click", "double_click", "right_click") and said:
@@ -1261,6 +1412,10 @@ class ComputerTask:
                 return "type_text needs some text."
             if len(action["text"]) > 2000:
                 return "that's too much text to type at once."
+            leak = leaked_syntax(action["text"], self.goal)
+            if leak:   # never typed: it would land in the user's document as garbage
+                return (f"the text to type contains call syntax ({leak[:40]}). Put only the words that should appear "
+                        "in text, and the element number in element.")
             focused = next((e for e in observation.elements if e.focused), None)
             if action.get("element") is None and focused is not None and focused.password:
                 return "the focused field is a password field; Jarvis never types passwords."
@@ -1343,13 +1498,18 @@ class ComputerTask:
                     time.sleep(0.1)
                 replacing = bool(element is not None and element.role in SINGLE_LINE_ROLES and element.value
                                  and not action.get("append"))
+                # Typed into whatever had the focus: that field is checked too (keys get lost in a busy app).
+                typed_into = element or next((e for e in observation.elements if e.focused and e.role in TEXT_ROLES),
+                                             None)
+                if typed_into is not None and not typed_into.password:   # for the check when the AI says done
+                    key = (typed_into.role, typed_into.name)
+                    if key not in self._typed:
+                        self._typed[key] = self.env.read_value(typed_into) or ""
+                    self._typed_last = key
                 if replacing:
                     self.env.press_keys(list(self.env.select_all))   # replace the old value, don't add to it
                     time.sleep(0.05)
                 result = self.env.type_text(action["text"]) or ""
-                # Typed into whatever had the focus: that field is checked too (keys get lost in a busy app).
-                typed_into = element or next((e for e in observation.elements if e.focused and e.role in TEXT_ROLES),
-                                             None)
                 if typed_into is not None and not typed_into.password and not result:
                     result = self._check_typed(typed_into, action["text"], replacing)
                 # A web address typed into a browser's address bar is only ever meant to be opened.

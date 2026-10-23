@@ -930,15 +930,183 @@ def test_done_is_sent_back_when_the_screen_check_disagrees():
     assert [s["status"] for s in task.timeline if s["text"] == "Check the result"] == ["failed", "ok"]
 
 
-def test_done_the_check_never_confirms_is_reported_as_unconfirmed_not_as_success():
+def test_done_the_check_never_confirms_is_reported_as_a_failure_not_as_success():
     screen = FakeScreen()
     steps = []
     for _ in range(computer_use.MAX_DONE_REFUSALS + 1):
         steps += [("done", {"summary": "Done it."}), ("verdict", {"achieved": False, "evidence": "nothing changed."})]
     task = ComputerTask("do it", screen, ai(*steps), verify=True)
     result = task.run()
-    assert task.state == "completed" and task.verified is False
-    assert "couldn't confirm it on screen" in result
+    assert task.state == "error" and task.verified is False
+    assert result.startswith("I couldn't get that done properly: nothing changed.") and "Done it" not in result
+
+
+def test_a_check_with_no_clear_answer_is_not_taken_as_success():
+    steps = []
+    for _ in range(computer_use.MAX_DONE_REFUSALS + 1):
+        steps += [("done", {"summary": "Done it."}), ("verdict", {"achieved": "maybe", "evidence": ""})]
+    task = ComputerTask("do it", FakeScreen(), ai(*steps), verify=True)
+    task.run()
+    assert task.state == "error" and task.verified is False
+
+
+# ---------- typed text: never the AI's own call syntax, and checked in the app itself ----------
+class FakeNotepad(FakeScreen):
+    """A Notepad-like document whose text can be read back, the way Windows 11's Notepad exposes it."""
+
+    def __init__(self, text="", garble=""):
+        super().__init__()
+        self.text = text
+        self.garble = garble   # what a mixed-up app adds after each typing
+
+    def observe(self):
+        return Observation(app="Notepad", window="Untitled - Notepad", cursor=self.cursor_at, elements=[
+            Element(1, "document", "Text editor", self.text[:40], (0, 40, 800, 500), focused=True),
+            Element(2, "menu item", "File", rect=(0, 0, 40, 20))])
+
+    def type_text(self, text):
+        self.actions.append(("type", text))
+        self.text += text + self.garble
+        return ""
+
+    def press_keys(self, keys):
+        self.actions.append(("keys", "+".join(keys)))
+        if keys == ["enter"]:
+            self.text += "\n"
+        return ""
+
+    def read_value(self, element):
+        return self.text if element.role == "document" else None
+
+    def set_value(self, element, value):
+        self.text = value
+        return ""
+
+
+def said(*texts):
+    """An AI that writes its answers as plain text instead of tool calls, as small local models do."""
+    remaining = list(texts)
+
+    def ask(messages, tools):
+        content = remaining.pop(0) if remaining else "done"
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[], content=content))])
+    return ask
+
+
+SHOPPING = "open Notepad and write a shopping list: milk, eggs, bread"
+
+
+@pytest.mark.parametrize("text", ['milk" {"element": 1, "press_enter": true}', '{"element": 1, "press_enter": true}',
+                                  "bread', 'press_enter': True}", "type_text(milk)", "[1] document “Text editor”"])
+def test_call_syntax_the_ai_puts_in_its_text_is_never_typed(text):
+    notepad = FakeNotepad()
+    brain = ai(("type_text", {"element": 1, "text": text}), ("fail", {"reason": "gave up"}))
+    ComputerTask(SHOPPING, notepad, brain).run()
+    assert notepad.actions == [] and notepad.text == ""
+    assert "contains call syntax" in brain.prompts[1]   # told why, so it can try again with just the words
+
+
+def test_the_real_notepad_answers_are_typed_as_just_their_words_or_refused():
+    """The answers qwen2.5-coder:7b gave on 2026-10-23, which put {"element": 1, ...} into the user's Notepad."""
+    notepad = FakeNotepad()
+    brain = said('type_text("milk" {"element": 1, "press_enter": true})', 'type_text {"element": 1, "text": "milk"}',
+                 "fail: gave up")
+    ComputerTask(SHOPPING, notepad, brain).run()
+    assert [a for a in notepad.actions if a[0] == "type"] == [("type", "milk")]
+    assert notepad.text == "milk"
+
+
+def test_calls_written_as_lines_of_name_and_json_run_in_order():
+    """2026-10-23 answers: calls as text, several at once, the last one cut off. They used to be read as an action
+    called "Notepad" (from "name") and thrown away."""
+    class Steady(FakeNotepad):
+        def still_valid(self, element=None):   # nothing else moves on this screen: planned calls may go ahead
+            return True
+    notepad = Steady()
+    opened = []
+    notepad.open_app = lambda name: opened.append(name) or ""
+    brain = said('type_text {"text": "milk", "press_enter": true}\ntype_text {"text": "eggs", "press_enter": true}\n'
+                 'type_text {"text":', 'open_app\n{"name": "Notepad", "arguments": {}}', "fail: gave up")
+    ComputerTask(SHOPPING, notepad, brain).run()
+    assert notepad.text == "milk\neggs\n" and opened == ["Notepad"]
+
+
+def test_a_call_wrapped_in_the_text_argument_types_only_its_words():
+    notepad = FakeNotepad()
+    ComputerTask(SHOPPING, notepad, ai(("type_text", {"element": 1, "text": '{"element": 1, "text": "milk"}'}))).run()
+    assert notepad.text == "milk"
+
+
+def test_json_the_user_asked_for_is_still_typed():
+    notepad = FakeNotepad()
+    goal = 'type {"name": "Sam", "age": 3} in Notepad'
+    ComputerTask(goal, notepad, ai(("type_text", {"element": 1, "text": '{"name": "Sam", "age": 3}'}))).run()
+    assert notepad.text == '{"name": "Sam", "age": 3}'
+
+
+def test_a_shopping_list_typed_right_is_confirmed_from_the_apps_own_text():
+    notepad = FakeNotepad()
+    brain = ai(("type_text", {"element": 1, "text": "Shopping list:\nmilk\neggs\nbread"}),
+               ("done", {"summary": "Wrote the list."}))
+    task = ComputerTask(SHOPPING, notepad, brain, verify=True)
+    assert task.run() == "Wrote the list." and task.state == "completed" and task.verified is True
+    assert len(brain.prompts) == 2   # settled by the text itself: the AI wasn't asked to judge its own work
+    assert task.timeline[-1]["note"] == "The text in the app is exactly what you asked for."
+
+
+def test_text_that_was_in_the_document_before_is_left_out_of_the_check():
+    notepad = FakeNotepad(text="Notes from Monday {draft}\n")
+    brain = ai(("type_text", {"element": 1, "text": "milk, eggs, bread"}), ("done", {"summary": "Wrote it."}))
+    task = ComputerTask(SHOPPING, notepad, brain, verify=True)
+    task.run()
+    assert task.state == "completed" and task.verified is True
+
+
+def test_a_missing_item_is_sent_back_even_when_the_ai_approves_its_own_work():
+    notepad = FakeNotepad()
+    brain = ai(("type_text", {"element": 1, "text": "milk, eggs"}), ("done", {"summary": "Wrote the list."}),
+               ("type_text", {"element": 1, "text": ", bread"}), ("done", {"summary": "Wrote the list."}),
+               *[("verdict", {"achieved": True, "evidence": "The list is there."})] * 3)
+    task = ComputerTask(SHOPPING, notepad, brain, verify=True)
+    assert task.run() == "Wrote the list."
+    assert "which is missing: bread" in brain.prompts[2]
+    assert notepad.text == "milk, eggs, bread" and task.verified is True
+
+
+def test_corrupted_text_is_reported_as_a_failure_never_as_success():
+    notepad = FakeNotepad(garble='{"element": 1}')   # the app ends up with call syntax in it
+    steps = [("type_text", {"element": 1, "text": "milk, eggs, bread"})]
+    steps += [("done", {"summary": "The shopping list is written."}),
+              ("verdict", {"achieved": True, "evidence": "Notepad shows the list."})] * (computer_use.MAX_DONE_REFUSALS + 1)
+    task = ComputerTask(SHOPPING, notepad, ai(*steps), verify=True)
+    result = task.run()
+    assert task.state == "error" and task.verified is False
+    assert "got mixed up with my own instruction code" in result and "shopping list is written" not in result
+    assert not any(s["status"] == "ok" for s in task.timeline if s["text"] == "Check the result")
+
+
+def test_an_item_typed_twice_is_reported_as_a_failure():
+    notepad = FakeNotepad()
+    steps = [("type_text", {"element": 1, "text": "milk"}), ("type_text", {"element": 1, "text": "milk eggs bread"})]
+    steps += [("done", {"summary": "Done."})] * (computer_use.MAX_DONE_REFUSALS + 1)
+    task = ComputerTask(SHOPPING, notepad, ai(*steps), verify=True)
+    assert "milk got typed more than once" in task.run() and task.state == "error"
+
+
+@pytest.mark.parametrize("goal, pieces, whole", [
+    (SHOPPING, ["milk", "eggs", "bread"], True),
+    ("type hello world in notepad", ["hello world"], True),
+    ("type hello in the search field and press enter", ["hello"], False),
+    ("In Notepad, type “Dear Sam,” and save it", ["Dear Sam,"], False),
+    ("open notepad and write a note: buy milk and eggs then save it", ["buy milk", "eggs"], False),
+])
+def test_the_text_a_goal_asks_for(goal, pieces, whole):
+    assert computer_use.requested_text(goal) == (pieces, whole)
+
+
+@pytest.mark.parametrize("goal", ["write a poem in notepad", "search for cats", "type in the search box"])
+def test_goals_that_dont_spell_out_the_words_ask_for_no_exact_text(goal):
+    assert computer_use.requested_text(goal) is None
 
 
 def test_done_right_after_a_failed_step_is_sent_back_once():
