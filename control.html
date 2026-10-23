@@ -10,11 +10,13 @@
       --stop: 255 107 129;
       --ink: #fff7ec;
       --muted: #e9c9a0;
-      --glass: rgb(20 12 4 / .9);
+      --glass: rgb(20 12 4 / .92);
       --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     }
-    [data-state="paused"], [data-state="waiting"] { --live: 150 190 255; }
+    [data-state="thinking"], [data-state="planning"], [data-state="observing"], [data-state="verifying"] { --live: 120 200 255; }
+    [data-state="paused"], [data-state="waiting"], [data-state="cancelling"] { --live: 150 190 255; }
+    [data-state="recovering"] { --live: 255 209 102; }
     [data-state="completed"] { --live: 61 242 192; }
     [data-state="stopped"], [data-state="error"] { --live: 180 186 200; }
 
@@ -30,65 +32,117 @@
       animation: breathe 2.4s ease-in-out infinite;
     }
     [data-state="paused"] .edge, [data-state="waiting"] .edge { animation: none; }
-    [data-ended] .edge { opacity: 0; }
-    @keyframes breathe { 50% { box-shadow: inset 0 0 0 3px rgb(var(--live) / .7), inset 0 0 16px 2px rgb(var(--live) / .25); } }
+    [data-ended] .edge { animation: none; opacity: 0; }
+    /* Opacity only: the compositor fades it for free, where an animated shadow repainted the whole screen every frame
+       and slowed the very apps Jarvis was typing into. */
+    @keyframes breathe { 50% { opacity: .6; } }
 
-    .bar {
-      position: fixed; left: 0; right: 0; bottom: 22px; margin-inline: auto; width: fit-content;
-      display: flex; align-items: center; gap: 12px;
-      max-width: min(920px, calc(100vw - 32px));
-      padding: 8px 8px 8px 16px;
+    /* Where the next click or key press goes, on the real screen. */
+    .ring {
+      position: fixed; pointer-events: none; border-radius: 8px;
+      border: 2px solid rgb(var(--live)); box-shadow: 0 0 0 4px rgb(var(--live) / .25), 0 0 18px rgb(var(--live) / .6);
+      transition: left .18s ease, top .18s ease, width .18s ease, height .18s ease, opacity .5s ease;
+    }
+    .ring.fade { opacity: 0; }
+
+    .card {
+      position: fixed; right: 20px; bottom: 20px; width: 380px; max-width: calc(100vw - 40px);
+      display: flex; flex-direction: column; gap: 9px;
+      padding: 12px;
       background: var(--glass);
       border: 1px solid rgb(var(--live) / .7);
-      border-radius: 14px;
-      box-shadow: 0 10px 40px rgb(0 0 0 / .45), 0 0 0 1px rgb(0 0 0 / .4), 0 0 24px rgb(var(--live) / .25);
+      border-radius: 16px;
+      box-shadow: 0 14px 44px rgb(0 0 0 / .5), 0 0 0 1px rgb(0 0 0 / .4), 0 0 24px rgb(var(--live) / .22);
       transition: border-color .4s ease, opacity .5s ease, transform .5s ease;
     }
-    [data-ended] .bar { opacity: 0; transform: translateY(12px); transition-delay: 2.8s; }
+    [data-ended] .card { opacity: 0; transform: translateY(12px); transition-delay: 2.8s; }
+    .head { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .badge { display: flex; align-items: center; gap: 8px; flex: none; font: 700 11px/1 var(--mono); letter-spacing: .14em; color: rgb(var(--live)); text-transform: uppercase; }
     .dot { width: 9px; height: 9px; border-radius: 50%; background: rgb(var(--live)); box-shadow: 0 0 10px rgb(var(--live)); animation: pulse 1.2s ease-in-out infinite; }
     [data-state="paused"] .dot, [data-ended] .dot { animation: none; }
     @keyframes pulse { 50% { opacity: .35; } }
-    .text { min-width: 0; display: flex; flex-direction: column; }
-    .detail { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meta { flex: 1; min-width: 0; color: var(--muted); font: 11px/1.2 var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .toggle { flex: none; padding: 5px 8px; font-size: 11px; }
+
+    .view { position: relative; border-radius: 10px; overflow: hidden; background: #000; aspect-ratio: 16 / 7; }
+    .view video { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .view .box { position: absolute; border: 2px solid rgb(var(--live)); border-radius: 4px; box-shadow: 0 0 10px rgb(var(--live) / .7); pointer-events: none; }
+    .live { position: absolute; left: 8px; top: 8px; padding: 3px 6px; border-radius: 5px; background: rgb(0 0 0 / .55); font: 700 10px/1 var(--mono); letter-spacing: .12em; color: #ff8a8a; }
+    .live::before { content: "● "; }
+    .noview { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; color: var(--muted); font-size: 12px; }
+
+    .text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .detail { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .step { color: var(--muted); font: 11px/1.3 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .actions { display: flex; gap: 6px; flex: none; }
+    .last { margin-right: 6px; font-weight: 600; }
+    .last[data-status="ok"] { color: rgb(61 242 192); }
+    .last[data-status="failed"] { color: rgb(var(--stop)); }
+    .last[data-status="nochange"], .last[data-status="declined"] { color: rgb(255 209 102); }
+    /* Steps used out of the most the task may take. */
+    .progress { height: 2px; border-radius: 2px; overflow: hidden; background: rgb(255 255 255 / .08); }
+    .progress i { display: block; height: 100%; width: 0; background: rgb(var(--live)); transition: width .5s ease; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .actions .stop { margin-left: auto; }
     button {
       font: 600 12px/1 var(--sans); color: var(--ink); cursor: pointer;
       padding: 9px 12px; border-radius: 9px; border: 1px solid rgb(255 255 255 / .18); background: rgb(255 255 255 / .08);
       display: inline-flex; align-items: center; gap: 8px;
     }
     button:hover { background: rgb(255 255 255 / .16); }
-    button:focus-visible { outline: 2px solid rgb(var(--live)); outline-offset: 2px; }
+    button:focus-visible, input:focus-visible { outline: 2px solid rgb(var(--live)); outline-offset: 2px; }
     button.stop { background: rgb(var(--stop) / .22); border-color: rgb(var(--stop) / .8); }
     button.stop:hover { background: rgb(var(--stop) / .38); }
     button.allow { background: rgb(var(--live) / .25); border-color: rgb(var(--live) / .8); }
     kbd { font: 500 10px/1 var(--mono); padding: 3px 5px; border-radius: 5px; background: rgb(0 0 0 / .35); color: var(--muted); }
+    form { display: flex; gap: 6px; }
+    input {
+      flex: 1; min-width: 0; padding: 8px 10px; border-radius: 9px; border: 1px solid rgb(255 255 255 / .18);
+      background: rgb(0 0 0 / .35); color: var(--ink); font: 12.5px/1.2 var(--sans); user-select: text;
+    }
+    input::placeholder { color: rgb(233 201 160 / .6); }
     [hidden] { display: none !important; }
 
     @media (prefers-reduced-motion: reduce) {
       .edge, .dot { animation: none !important; }
-      .bar, .edge { transition: none !important; }
+      .card, .edge, .ring { transition: none !important; }
     }
   </style>
 </head>
 <body data-state="starting">
   <div class="edge" aria-hidden="true"></div>
-  <div class="bar" id="bar" role="status" aria-live="polite">
-    <div class="badge"><span class="dot" aria-hidden="true"></span><span id="badge">AI control active</span></div>
+  <div class="ring fade" id="ring" hidden aria-hidden="true"></div>
+  <div class="card" id="card" role="status" aria-live="polite">
+    <div class="head">
+      <div class="badge"><span class="dot" aria-hidden="true"></span><span id="badge">AI control active</span></div>
+      <span class="meta" id="meta"></span>
+      <button type="button" class="toggle" id="toggleView" aria-pressed="true" title="Show or hide the live view">Hide view</button>
+    </div>
+    <div class="view" id="view">
+      <video id="video" muted playsinline aria-label="Live view of the screen Jarvis is working on"></video>
+      <span class="live" id="liveTag" hidden>Live</span>
+      <div class="box" id="box" hidden></div>
+      <div class="noview" id="noView" hidden>The live view isn't available on this computer.</div>
+    </div>
     <div class="text">
       <span class="detail" id="detail">Getting ready…</span>
-      <span class="step" id="step"></span>
+      <span class="step"><span class="last" id="last" hidden></span><span id="step"></span></span>
     </div>
+    <span class="progress" id="progress" hidden aria-hidden="true"><i id="progressBar"></i></span>
     <div class="actions" id="controls">
-      <button type="button" id="pause">Pause</button>
-      <button type="button" class="stop" id="stop">Stop <kbd id="shortcut">Ctrl+Alt+Q</kbd></button>
+      <button type="button" id="pause" title="Hold the task: the mouse and keyboard are yours until you resume">Pause</button>
+      <button type="button" id="cancel" hidden title="Stop this task; stay in control for the next command">Cancel task</button>
+      <button type="button" class="stop" id="stop"><span id="stopLabel">Stop</span> <kbd id="shortcut">Ctrl+Alt+Q</kbd></button>
     </div>
     <div class="actions" id="question" hidden>
       <button type="button" class="allow" id="allow">Allow</button>
       <button type="button" id="deny">Don’t</button>
     </div>
+    <form id="taskForm" autocomplete="off">
+      <input id="taskInput" type="text" maxlength="300" spellcheck="false" placeholder="New task… (replaces this one)" aria-label="New task for Jarvis" />
+      <button type="submit">Run</button>
+    </form>
   </div>
+  <script src="takecontrol/live.js"></script>
   <script src="control.js"></script>
 </body>
 </html>

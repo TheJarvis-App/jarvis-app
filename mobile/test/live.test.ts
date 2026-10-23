@@ -8,8 +8,7 @@ import { ComputerConnection } from "../src/core/connection.ts";
 import { pair, parsePairingInput } from "../src/core/pairing.ts";
 import type { ConnState, DeviceCredentials } from "../src/core/protocol.ts";
 
-const ROOT = new URL("../..", import.meta.url).pathname;
-const PY = process.env.JARVIS_PY || ROOT + "venv/bin/python";
+import { PY, ROOT } from "./support/python.ts";
 const PORT = 8797, CTRL = 8796, RELAY_PORT = 8795;
 const procs: ChildProcess[] = [];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

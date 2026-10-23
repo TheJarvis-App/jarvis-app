@@ -4,6 +4,7 @@ UI Automation is the accessibility layer Windows itself provides: every button, 
 with its name and on-screen position, for normal apps, Office, File Explorer, Settings and the browsers. No special
 permission is needed. Screenshots (for the optional vision model) come from mss.
 """
+import re
 import threading
 import time
 
@@ -28,10 +29,12 @@ INTERACTIVE = {
 }
 CONTEXT = {"TextControl": "text", "HeaderItemControl": "header", "ImageControl": "image"}
 OWN_PROCESSES = {"jarvis.exe", "electron.exe", "jarvis-backend.exe"}   # never operate Jarvis himself
-MAX_VISITED = 2500
 MAX_ELEMENTS = 400
-TIME_BUDGET = 2.0   # seconds; a huge web page must not stall a step
+TIME_BUDGET_MS = 2000   # a huge web page, or an app that stopped answering, must not stall a step
 _com_ready = threading.local()
+# UI Automation property ids (UIAutomationClient.h), read for every element in one cross-process call (see _collect)
+CONTROL_TYPE, NAME, RECT, ENABLED, FOCUSED, OFFSCREEN, PASSWORD, VALUE = (30003, 30005, 30001, 30010, 30008, 30022,
+                                                                          30019, 30045)
 
 
 def _ensure_com() -> None:
@@ -45,6 +48,34 @@ def _ensure_com() -> None:
     except OSError:
         pass   # already started on this thread in another mode: usable as it is
     _com_ready.done = True
+
+
+def _uia():
+    """This thread's UI Automation client, with timeouts: an app that hangs gives up after TIME_BUDGET_MS instead of
+    stalling the whole task (the plain client waits forever)."""
+    client = getattr(_com_ready, "client", None)
+    if client is None:
+        import comtypes.client
+        core = auto.uiautomation._AutomationClient.instance().UIAutomationCore
+        client = comtypes.client.CreateObject(core.CUIAutomation8, interface=core.IUIAutomation2)
+        client.ConnectionTimeout = client.TransactionTimeout = TIME_BUDGET_MS
+        request = client.CreateCacheRequest()
+        for prop in (CONTROL_TYPE, NAME, RECT, ENABLED, FOCUSED, PASSWORD, VALUE):
+            request.AddProperty(prop)
+        kinds = [client.CreatePropertyCondition(CONTROL_TYPE, getattr(auto.ControlType, name))
+                 for name in list(INTERACTIVE) + list(CONTEXT)]
+        wanted = kinds[0]
+        for kind in kinds[1:]:
+            wanted = client.CreateOrCondition(wanted, kind)
+        _com_ready.condition = client.CreateAndCondition(wanted, client.CreatePropertyCondition(OFFSCREEN, False))
+        _com_ready.request = request
+        _com_ready.client = client
+    return client
+
+
+def _control(handle):
+    """The uiautomation Control for a raw element (its patterns: Invoke, Value, Toggle...), or None."""
+    return auto.Control.CreateControlFromElement(handle) if handle is not None else None
 
 
 class WindowsScreen(computer_use.Environment):
@@ -74,6 +105,7 @@ class WindowsScreen(computer_use.Environment):
         self._target = hwnd
         observation = Observation()
         observation.cursor = winctl.cursor_position()
+        observation.sample = self.screen_sample()
         observation.screenshot, observation.screen_size = self._screenshot()
         observation.other_windows = [title for h, title in winctl.list_windows()
                                      if h != hwnd and winctl.window_process_name(h) not in OWN_PROCESSES][:15]
@@ -86,42 +118,46 @@ class WindowsScreen(computer_use.Environment):
             return observation
         observation.window = window.Name or ""
         observation.app = (winctl.window_process_name(hwnd) or "").removesuffix(".exe")
-        observation.elements = self._collect(window)
+        observation.elements = self._collect(hwnd)
         return observation
 
-    def _collect(self, window) -> list:
-        elements, visited, started = [], 0, time.time()
+    def _collect(self, hwnd) -> list:
+        """Every interesting element of the window, read in one cached UI Automation call: several times faster than
+        walking the tree property by property, which ran out of time halfway through a browser or VS Code."""
+        names = {getattr(auto.ControlType, name): name for name in list(INTERACTIVE) + list(CONTEXT)}
+        elements = []
         try:
-            for control, _depth in auto.WalkControl(window, includeTop=False, maxDepth=30):
-                visited += 1
-                if visited > MAX_VISITED or len(elements) >= MAX_ELEMENTS or time.time() - started > TIME_BUDGET:
-                    break
-                kind = INTERACTIVE.get(control.ControlTypeName) or CONTEXT.get(control.ControlTypeName)
-                if not kind:
+            client = _uia()
+            found = client.ElementFromHandle(hwnd).FindAllBuildCache(4, _com_ready.condition,   # 4: descendants
+                                                                     _com_ready.request)
+            count = found.Length if found else 0
+        except Exception as e:   # the app didn't answer in time, or its window just closed
+            print(f"Reading the window failed: {e}", flush=True)
+            return elements
+        for i in range(count):
+            if len(elements) >= MAX_ELEMENTS:
+                break
+            try:
+                item = found.GetElement(i)
+                type_name = names.get(item.CachedControlType, "")
+                kind = INTERACTIVE.get(type_name) or CONTEXT.get(type_name)
+                rect = item.CachedBoundingRectangle
+                width, height = rect.right - rect.left, rect.bottom - rect.top
+                if not kind or width <= 1 or height <= 1:
                     continue
-                try:
-                    if control.IsOffscreen:
-                        continue
-                    rect = control.BoundingRectangle
-                    if rect.width() <= 1 or rect.height() <= 1:
-                        continue
-                    name = (control.Name or "").strip()
-                    value = ""
-                    password = bool(getattr(control.Element, "CurrentIsPassword", False))
-                    if kind in ("text field", "combo box", "document") and not password:
-                        pattern = control.GetPattern(auto.PatternId.ValuePattern)
-                        if pattern is not None:
-                            value = (pattern.Value or "")[:200]
-                    if control.ControlTypeName in CONTEXT and not name:
-                        continue
-                    elements.append(Element(
-                        id=len(elements) + 1, role=kind, name=name[:120], value=value,
-                        rect=(rect.left, rect.top, rect.width(), rect.height()), enabled=bool(control.IsEnabled),
-                        focused=bool(control.HasKeyboardFocus), password=password, handle=control))
-                except Exception:
-                    continue   # an element that vanished mid-read is simply skipped
-        except Exception as e:
-            print(f"Reading the window stopped early: {e}", flush=True)
+                name = (item.CachedName or "").strip()
+                if type_name in CONTEXT and not name:
+                    continue
+                password = bool(item.CachedIsPassword)
+                value = ""
+                if kind in ("text field", "combo box", "document") and not password:
+                    value = str(item.GetCachedPropertyValue(VALUE) or "")[:200]
+                elements.append(Element(
+                    id=len(elements) + 1, role=kind, name=name[:120], value=value,
+                    rect=(rect.left, rect.top, width, height), enabled=bool(item.CachedIsEnabled),
+                    focused=bool(item.CachedHasKeyboardFocus), password=password, handle=item))
+            except Exception:
+                continue   # an element that vanished mid-read is simply skipped
         return elements
 
     def _screenshot(self):
@@ -137,6 +173,28 @@ class WindowsScreen(computer_use.Environment):
 
     def cursor(self):
         return winctl.cursor_position()
+
+    def screen_sample(self):
+        try:
+            return winctl.screen_sample()
+        except Exception:
+            return None
+
+    def still_valid(self, element=None) -> bool:
+        """The window being worked in is still in front and the element (if any) is where it was: a planned next action
+        can go ahead without reading the whole window again."""
+        target = getattr(self, "_target", None)
+        front = winctl.foreground_window()
+        if not target or (front != target and winctl.window_process_name(front) not in OWN_PROCESSES):
+            return False
+        if element is None:
+            return True
+        try:
+            rect = element.handle.CurrentBoundingRectangle
+            same = (rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top) == tuple(element.rect)
+            return same and bool(element.handle.CurrentIsEnabled) and not element.handle.CurrentIsOffscreen
+        except Exception:
+            return False   # it's gone
 
     # ---------- acting ----------
     def _bring_forward(self) -> None:
@@ -156,14 +214,16 @@ class WindowsScreen(computer_use.Environment):
 
     def read_value(self, element: Element):
         try:
-            pattern = element.handle.GetPattern(auto.PatternId.ValuePattern) if element.handle is not None else None
+            control = _control(element.handle)
+            pattern = control.GetPattern(auto.PatternId.ValuePattern) if control is not None else None
             return None if pattern is None else (pattern.Value or "")
         except Exception:
             return None
 
     def set_value(self, element: Element, value: str) -> str:
         try:
-            pattern = element.handle.GetPattern(auto.PatternId.ValuePattern) if element.handle is not None else None
+            control = _control(element.handle)
+            pattern = control.GetPattern(auto.PatternId.ValuePattern) if control is not None else None
             if pattern is None or pattern.IsReadOnly:
                 return "this field can't be filled in directly"
             pattern.SetValue(value)
@@ -173,7 +233,7 @@ class WindowsScreen(computer_use.Environment):
 
     def focus_element(self, element: Element) -> str:
         self._bring_forward()
-        control = element.handle
+        control = _control(element.handle)
         if control is not None:
             try:
                 control.SetFocus()
@@ -195,7 +255,7 @@ class WindowsScreen(computer_use.Environment):
                 "it first, or pick another element.")
 
     def press_element(self, element: Element) -> str:
-        control = element.handle
+        control = _control(element.handle)
         if control is not None:
             try:
                 if element.role in ("text field", "combo box", "document"):
@@ -221,8 +281,17 @@ class WindowsScreen(computer_use.Environment):
         winctl.click(point[0], point[1], button=button, double=double)
         return ""
 
+    def drag(self, start, end) -> str:
+        self._bring_forward()
+        winctl.drag(start[0], start[1], end[0], end[1])
+        return ""
+
     def type_text(self, text: str) -> str:
         self._bring_forward()
+        # A paste arrives whole; keys typed one by one get garbled by a slow app (Windows 11's Notepad while the
+        # screen is being captured). Keys only for a character or two, or when the clipboard holds a picture or files.
+        if len(text) > 2 and winctl.paste_text(text):
+            return ""
         winctl.type_text(text, strict=True)
         return ""
 
@@ -259,8 +328,14 @@ class WindowsScreen(computer_use.Environment):
         return ""
 
     def switch_window(self, title: str) -> str:
-        wanted = title.lower()
-        for hwnd, window_title in winctl.list_windows():
-            if wanted in window_title.lower() and winctl.window_process_name(hwnd) not in OWN_PROCESSES:
-                return "" if winctl.focus(hwnd) else f"Windows didn't let me bring “{window_title}” to the front."
+        windows = [(hwnd, t) for hwnd, t in winctl.list_windows()
+                   if winctl.window_process_name(hwnd) not in OWN_PROCESSES]
+        # The whole title first, then its parts: an AI often writes "Notepad - Notes" for the window "*Notes - Notepad".
+        parts = [title] + [p for p in re.split(r"\s+[-–—|]\s+", title) if len(p.strip()) > 2]
+        for wanted in (p.strip().lower().lstrip("*") for p in parts):
+            for hwnd, window_title in windows:
+                if wanted in window_title.lower():
+                    if hwnd == getattr(self, "_target", None):
+                        return f"“{window_title}” is already the window in front: work in it."
+                    return "" if winctl.focus(hwnd) else f"Windows didn't let me bring “{window_title}” to the front."
         return f"No open window called “{title}”."

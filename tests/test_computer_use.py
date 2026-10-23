@@ -1,5 +1,6 @@
 """The computer-control loop, on a pretend screen with a scripted AI: what reaches the mouse, and what never does."""
 import json
+import re
 import sys
 import threading
 import time
@@ -557,7 +558,11 @@ class FakeBridge:
 
     def run(self, code, timeout=20):
         self.calls.append(code)
-        if "RESULT = ('Active" in code:   # BlenderComputerTask's own scene-summary query
+        if "copy=True" in code:   # BlenderComputerTask's checkpoint before the first script
+            return {"ok": True, "output": "1"}
+        if code.endswith("json.dumps(digest())"):   # ... and its before/after look at the objects
+            return {"ok": True, "output": "{}"}
+        if "#ERRORS" in code:   # BlenderComputerTask's own scene-summary query
             return {"ok": True, "output": "Active: Cube. Objects: Cube (MESH) at (0, 0, 0)"}
         if self._responses:
             return self._responses.pop(0)
@@ -654,3 +659,630 @@ def test_blender_task_updates_session_object_context_from_free_form_code():
     task = computer_use.BlenderComputerTask("create a cube", FakeScreen(), brain, Bridge(), session=session)
     task.run()
     assert session.blender_objects == [{"name": "Cube", "kind": "mesh"}]
+
+
+# ---------- the Blender task's look at its own work (blender_scene.py's report and check) ----------
+
+def test_a_script_error_shows_the_exception_and_the_failing_line_first():
+    import blender_control
+    offset = blender_control.with_kit("").count("\n")
+    error = ("Traceback (most recent call last):\n"
+             f'  File "<jarvis>", line {offset + 2}, in <module>\n'
+             "KeyError: 'bpy_prop_collection[key]: key \"Specular\" not found'")
+    text = computer_use._script_error(error, "p = mat.node_tree.nodes['Principled BSDF']\np.inputs['Specular'] = 1")
+    assert text.startswith("KeyError")
+    assert "at line 2: p.inputs['Specular'] = 1" in text and "Specular IOR Level" in text
+
+
+def test_blender_scripts_run_with_the_helpers_loaded():
+    bridge = FakeBridge(responses=[{"ok": True, "output": "made"}])
+    brain = ai(("run_python", {"code": "frame()"}), ("done", {"summary": "ok"}))
+    computer_use.BlenderComputerTask("frame it", FakeScreen(), brain, bridge).run()
+    sent = [c for c in bridge.calls if c.endswith("frame()")]
+    assert sent and "JARVIS_KIT" in sent[0]
+
+
+def test_the_blender_instructions_list_the_helpers():
+    task = computer_use.BlenderComputerTask("x", FakeScreen(), ai(), FakeBridge())
+    assert "paint(obj" in task.system_prompt and "frame(objects=None)" in task.system_prompt
+
+
+class CheckingBridge(FakeBridge):
+    """A scene whose checks find a new error once the AI's script has run."""
+
+    def __init__(self):
+        super().__init__()
+        self.broken = False
+
+    def run(self, code, timeout=20):
+        self.calls.append(code)
+        if "#ERRORS" in code:
+            errors = ["Cube material Glass's shader isn't connected to its output"] if self.broken else []
+            return {"ok": True, "output": "- Cube [mesh]\n#ERRORS " + json.dumps(errors)}
+        self.broken = True
+        return {"ok": True, "output": "Done."}
+
+
+def test_done_is_refused_once_when_the_checks_find_a_new_problem_then_accepted():
+    bridge = CheckingBridge()
+    brain = ai(("run_python", {"code": "mess_up()"}), ("done", {"summary": "made it glass"}),
+               ("done", {"summary": "made it glass"}))
+    task = computer_use.BlenderComputerTask("make it glass", FakeScreen(), brain, bridge)
+    assert task.run() == "made it glass" and task.state == "completed"
+    assert any("isn't connected" in p and "couldn't be used" in p for p in brain.prompts)
+
+
+def test_a_slow_script_is_reported_as_still_running_not_as_an_error():
+    bridge = FakeBridge(responses=[{"ok": False, "busy": True, "error": "still working"}])
+    task = computer_use.BlenderComputerTask("render", FakeScreen(), ai(), bridge)
+    outcome = task._execute({"action": "run_python", "code": "render('x.png')"}, None, FakeScreen().observe())
+    assert "still running" in outcome and "Don't run it again" in outcome
+    assert task._did_something
+
+
+# ---------- reading a small model's answer (real answers from llama3.2 through Ollama) ----------
+
+def _texted(content):
+    """An AI that answers once with `content` as text, the way small local models often do instead of a tool call."""
+    def ask(messages, tools):
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=None, content=content))])
+    return ask
+
+
+@pytest.mark.parametrize("content,code", [
+    ('{"name":"run_python","parameters":"import bpy; bpy.data.objects[\'Cube\'].location.z += 3"}',
+     "import bpy; bpy.data.objects['Cube'].location.z += 3"),
+    ('{"name": "run_python", "parameters": {"code": "import bpy\nbpy.ops.object.light_add(type=\'SUN\')"}}',
+     "import bpy\nbpy.ops.object.light_add(type='SUN')"),
+    ('{"name":"run_python","parameters":{"code":"x = 1"}}{"name":"switch_window","parameters":{"title":"Blen"}}',
+     "x = 1"),
+])
+def test_a_tool_call_written_as_text_is_understood_however_its_arguments_were_written(content, code):
+    task = computer_use.BlenderComputerTask("x", FakeScreen(), _texted(content), FakeBridge())
+    tools = computer_use.BASE_TOOLS + computer_use.BLENDER_TOOLS
+    action, _ = task._decide(FakeScreen().observe(), "", tools)
+    assert action == {"action": "run_python", "code": code}
+
+
+def test_a_native_tool_call_with_just_the_code_as_its_arguments_still_runs_it():
+    call = SimpleNamespace(function=SimpleNamespace(name="run_python", arguments=json.dumps("frame()")))
+    def ask(messages, tools):
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[call], content=""))])
+    task = computer_use.BlenderComputerTask("x", FakeScreen(), ask, FakeBridge())
+    action, _ = task._decide(FakeScreen().observe(), "", computer_use.BASE_TOOLS + computer_use.BLENDER_TOOLS)
+    assert action == {"action": "run_python", "code": "frame()"}
+
+
+def test_truncated_json_arguments_are_still_refused():
+    call = SimpleNamespace(function=SimpleNamespace(name="run_python", arguments='{"code": "import bpy'))
+    def ask(messages, tools):
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[call], content=""))])
+    task = computer_use.BlenderComputerTask("x", FakeScreen(), ask, FakeBridge())
+    action, _ = task._decide(FakeScreen().observe(), "", computer_use.BASE_TOOLS + computer_use.BLENDER_TOOLS)
+    assert action.get("_bad_json") is True
+
+
+@pytest.mark.parametrize("content,code", [   # real answers from qwen2.5-coder:7b once the helpers were listed
+    ('{"name": "frame", "arguments": {"objects": ["Sphere", "Cube", "Cone"]}}',
+     "RESULT = str(frame(objects=['Sphere', 'Cube', 'Cone']))"),
+    ('```json\n{"name": "paint", "arguments": {"obj": "Cube", "color": (1, 1, 1), "metallic": 1, "roughness": 0.05}}'
+     '\n```', "RESULT = str(paint('Cube', color=(1, 1, 1), metallic=1, roughness=0.05))"),
+    ("run_python(bpy.ops.object.light_add(type='SUN'))", "bpy.ops.object.light_add(type='SUN')"),
+    ("run_python\n```python\nx = 1\n```", "x = 1"),
+])
+def test_a_helper_called_like_a_tool_or_code_written_as_a_call_still_runs_as_code(content, code):
+    task = computer_use.BlenderComputerTask("x", FakeScreen(), _texted(content), FakeBridge())
+    tools = computer_use.BASE_TOOLS + computer_use.BLENDER_TOOLS
+    action, _ = task._decide(FakeScreen().observe(), "", tools)
+    assert task._validate(action, FakeScreen().observe()) == ""
+    assert action == {"action": "run_python", "code": code}
+
+
+def test_a_python_style_dict_answer_is_read_as_the_call_it_is():
+    task = computer_use.BlenderComputerTask("x", FakeScreen(), _texted("{'name': 'open_app', 'arguments': "
+                                                                       "{'name': 'Blender'}}"), FakeBridge())
+    action, _ = task._decide(FakeScreen().observe(), "", computer_use.BASE_TOOLS + computer_use.BLENDER_TOOLS)
+    assert action == {"action": "open_app", "name": "Blender"}
+
+
+# ---------- local models' answers as text, checked before anything runs ----------
+
+def _texty(*answers):
+    """An AI that writes its answers as plain text (then keeps saying done)."""
+    remaining = list(answers)
+    prompts = []
+
+    def ask(messages, tools):
+        prompts.append(messages[-1]["content"])
+        content = remaining.pop(0) if remaining else '{"name": "done", "arguments": {"summary": "finished"}}'
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=None, content=content))])
+    ask.prompts = prompts
+    return ask
+
+
+def test_a_run_python_call_with_broken_json_still_reaches_the_syntax_check_and_its_error_goes_back():
+    # What llama3.2 really wrote for "create a villa": unescaped quotes inside the code break the JSON.
+    broken = ('{"name": "run_python", "parameters": {"code": "import bpy\nbpy.ops.object.select_all(action="SELECT-all'
+              '\nbpy.ops.object.delete()"}}')
+    bridge = FakeBridge()
+    brain = _texty(broken, '{"name": "fail", "arguments": {"reason": "gave up"}}')
+    computer_use.BlenderComputerTask("create a villa", FakeScreen(), brain, bridge).run()
+    assert "SyntaxError" in brain.prompts[1] and "at line 2" in brain.prompts[1]
+    assert "it wasn't a tool call" not in brain.prompts[1]
+    assert not any("select_all" in c for c in bridge.calls)   # nothing that can't even be parsed is sent to Blender
+
+
+@pytest.mark.parametrize("answer", [
+    "Here you go:\n```python\nimport bpy\nbpy.ops.mesh.primitive_cube_add()\n```",
+    '{"tool_calls": [{"type": "function", "function": {"name": "run_python", "arguments": '
+    '"{\\"code\\": \\"bpy.ops.mesh.primitive_cube_add()\\"}"}}]}',
+    '{"function": {"name": "run_python", "arguments": {"code": "bpy.ops.mesh.primitive_cube_add()"}}}',
+    '<tool_call>{"name": "run_python", "arguments": {"code": "bpy.ops.mesh.primitive_cube_add()"}}</tool_call>',
+])
+def test_code_written_as_a_fenced_block_or_an_openai_shaped_call_is_run(answer):
+    bridge = FakeBridge()
+    computer_use.BlenderComputerTask("add a cube", FakeScreen(), _texty(answer), bridge).run()
+    assert any(c.endswith("bpy.ops.mesh.primitive_cube_add()") for c in bridge.calls)
+
+
+class SceneBridge(FakeBridge):
+    """A FakeBridge whose scene really gains objects: a script with "#ADD n" adds n meshes, seen by digest()."""
+
+    def __init__(self):
+        super().__init__()
+        self.objects = {"Cube": {"type": "mesh"}}
+
+    def run(self, code, timeout=20):
+        if code.endswith("json.dumps(digest())"):
+            self.calls.append(code)
+            return {"ok": True, "output": json.dumps(self.objects)}
+        added = re.search(r"#ADD (\d+)", code)
+        if added:
+            for _ in range(int(added.group(1))):
+                self.objects[f"Part {len(self.objects)}"] = {"type": "mesh"}
+        return super().run(code, timeout)
+
+
+def test_a_table_that_is_still_one_box_is_never_reported_as_done():
+    bridge = SceneBridge()
+    brain = ai(("run_python", {"code": "add_box('Table', size=(1, 1, 1))  #ADD 1"}),
+               *[("done", {"summary": "Built a table."})] * 5)
+    task = computer_use.BlenderComputerTask("build a simple table with four legs", FakeScreen(), brain, bridge)
+    result = task.run()
+    assert task.state == "error"
+    assert result.startswith("I stopped without finishing") and "at least 5 separate parts" in result
+    assert "not yet" in brain.prompts[2]   # it was told why, and given the chance to keep building
+
+
+def test_a_table_made_of_its_parts_finishes_normally():
+    bridge = SceneBridge()
+    brain = ai(("run_python", {"code": "top_and_legs()  #ADD 5"}), ("done", {"summary": "Built a table."}))
+    task = computer_use.BlenderComputerTask("build a simple table with four legs", FakeScreen(), brain, bridge)
+    assert task.run() == "Built a table." and task.state == "completed"
+
+
+def test_a_free_form_house_needs_its_roof_and_door_named_before_done():
+    bridge = SceneBridge()
+    brain = ai(("run_python", {"code": "walls_and_windows()  #ADD 9"}), *[("done", {"summary": "Built."})] * 5)
+    task = computer_use.BlenderComputerTask("build a house", FakeScreen(), brain, bridge)
+    task.run()
+    assert task.state == "error"
+    assert any("nothing in the scene is a wall, roof, door, window" in p or "still no" in p for p in brain.prompts)
+
+
+# ---------- the task's state, as the window and the overlay show it ----------
+
+def test_a_step_can_say_what_kind_of_work_it_is():
+    reported = []
+
+    def checking():
+        return "All checks pass."
+    checking.state = "verifying"
+    computer_use.ScriptedTask("x", [("Checking", checking)], report=reported.append).run()
+    assert [r["state"] for r in reported] == ["verifying", "completed"]
+
+
+def test_stopping_mid_step_says_it_is_stopping_then_stops():
+    reported = []
+    started, release = threading.Event(), threading.Event()
+
+    def long_step():
+        started.set()
+        release.wait(5)
+        return "made it"
+    task = computer_use.ScriptedTask("x", [("Long", long_step), ("Never", lambda: "never")], report=reported.append)
+    worker = threading.Thread(target=task.run)
+    worker.start()
+    started.wait(5)
+    task.stop()
+    assert reported[-1]["state"] == "cancelling"   # said at once, while the step is still running
+    release.set()
+    worker.join(5)
+    assert task.state == "stopped" and [r["state"] for r in reported][-1] == "stopped"
+
+
+# ---------- the closed loop: plan, re-check before acting, check "done", recover, stop at once ----------
+def test_a_plan_comes_first_and_stays_in_front_of_the_ai():
+    screen = FakeScreen()
+    brain = ai(("plan", {"steps": ["Type minecraft in the search field", "Press Enter"]}),
+               ("type_text", {"element": 1, "text": "minecraft", "press_enter": True}),
+               ("done", {"summary": "Searched."}))
+    states = []
+    task = ComputerTask("search for minecraft", screen, brain, report=states.append, plan_first=True)
+    assert task.run() == "Searched."
+    assert task.plan == ["Type minecraft in the search field", "Press Enter"]
+    assert "1. Type minecraft in the search field 2. Press Enter" in brain.prompts[1]
+    assert states[0]["state"] == "planning" and states[-1]["plan"] == task.plan
+
+
+def test_done_is_sent_back_when_the_screen_check_disagrees():
+    screen = FakeScreen()
+    brain = ai(("done", {"summary": "Searched."}),
+               ("verdict", {"achieved": False, "evidence": "the search field is still empty."}),
+               ("type_text", {"element": 1, "text": "cats", "press_enter": True}),
+               ("done", {"summary": "Searched for cats."}),
+               ("verdict", {"achieved": True, "evidence": "Results for cats are showing."}))
+    task = ComputerTask("search for cats", screen, brain, verify=True)
+    assert task.run() == "Searched for cats."
+    assert ("type", "cats") in screen.actions
+    assert "the search field is still empty" in brain.prompts[2]   # told why it isn't done
+    assert task.verified is True
+    assert [s["status"] for s in task.timeline if s["text"] == "Check the result"] == ["failed", "ok"]
+
+
+def test_done_the_check_never_confirms_is_reported_as_unconfirmed_not_as_success():
+    screen = FakeScreen()
+    steps = []
+    for _ in range(computer_use.MAX_DONE_REFUSALS + 1):
+        steps += [("done", {"summary": "Done it."}), ("verdict", {"achieved": False, "evidence": "nothing changed."})]
+    task = ComputerTask("do it", screen, ai(*steps), verify=True)
+    result = task.run()
+    assert task.state == "completed" and task.verified is False
+    assert "couldn't confirm it on screen" in result
+
+
+def test_done_right_after_a_failed_step_is_sent_back_once():
+    class Broken(FakeScreen):
+        def press_element(self, element):
+            raise RuntimeError("the button didn't respond")
+    brain = ai(("click", {"element": 2}), ("done", {"summary": "Clicked."}), ("done", {"summary": "Clicked."}),
+               ("verdict", {"achieved": True, "evidence": "ok"}))
+    task = ComputerTask("press search", Broken(), brain, verify=True)
+    task.run()
+    assert "Your last action failed" in brain.prompts[2]
+    assert task.timeline[0]["status"] == "failed"
+
+
+def test_an_element_that_moved_while_the_ai_was_thinking_is_found_again(monkeypatch):
+    monkeypatch.setattr(computer_use, "STALE_AFTER", -1)   # every decision counts as slow
+
+    class Shifting(FakeScreen):
+        looks = 0
+
+        def observe(self):
+            self.looks += 1
+            observation = super().observe()
+            if self.looks > 1:   # a banner pushed everything down after the first look
+                for e in observation.elements:
+                    x, y, w, h = e.rect
+                    e.rect = (x, y + 100, w, h)
+                    e.id += 10
+            return observation
+
+        def click(self, point, button="left", double=False):
+            self.actions.append(("click", point, button, double))
+            return ""
+    screen = Shifting()
+    ComputerTask("open the menu", screen, ai(("right_click", {"element": 2}))).run()
+    assert ("click", (360, 125), "right", False) in screen.actions   # where the button is now, not where it was
+
+
+def test_an_element_gone_by_the_time_of_acting_is_not_clicked(monkeypatch):
+    monkeypatch.setattr(computer_use, "STALE_AFTER", -1)
+
+    class Vanishing(FakeScreen):
+        looks = 0
+
+        def observe(self):
+            self.looks += 1
+            observation = super().observe()
+            if self.looks > 1:
+                observation.elements = [e for e in observation.elements if e.role != "button"]
+            return observation
+    screen = Vanishing()
+    brain = ai(("click", {"element": 2}), ("fail", {"reason": "It's gone."}))
+    ComputerTask("search", screen, brain).run()
+    assert screen.actions == []
+    assert "isn't there any more" in brain.prompts[1]
+
+
+def test_a_step_that_changed_nothing_is_reported_as_recovering():
+    screen = FakeScreen()
+    states = []
+    ComputerTask("x", screen, ai(("scroll", {"direction": "down"}), ("done", {"summary": "ok"})),
+                 report=states.append).run()
+    names = [s["state"] for s in states]
+    assert "recovering" in names
+    assert states[-1]["steps"][0]["status"] == "nochange"
+
+
+def test_stop_ends_the_task_while_the_ai_is_still_thinking():
+    release = threading.Event()
+
+    def slow(messages, tools):
+        release.wait(10)
+        raise AssertionError("its answer must not be used")
+    task = ComputerTask("x", FakeScreen(), slow)
+    runner = threading.Thread(target=task.run)
+    runner.start()
+    while task.state != "thinking":
+        time.sleep(0.01)
+    started = time.time()
+    task.stop()
+    runner.join(5)
+    release.set()
+    assert not runner.is_alive() and time.time() - started < 2
+    assert task.state == "stopped"
+
+
+def test_a_task_past_its_time_limit_stops_in_plain_words(monkeypatch):
+    task = ComputerTask("x", FakeScreen(), ai(*[("scroll", {"direction": "down"})] * 5))
+    task.max_seconds = -1
+    assert "took over" in task.run() and task.state == "error"
+
+
+def test_each_report_carries_the_app_in_front_and_the_steps_so_far():
+    states = []
+    ComputerTask("x", FakeScreen(), ai(("click", {"element": 2}), ("done", {"summary": "ok"})),
+                 report=states.append).run()
+    last = states[-1]
+    assert last["app"] == "FakeApp" and last["window"] == "Fake window"
+    assert last["steps"][0] == {"n": 1, "text": "Click button “Search”", "status": "ok", "note": last["steps"][0]["note"]}
+
+
+def batch_ai(*answers):
+    """An AI that answers each question with several tool calls at once (then keeps saying done)."""
+    remaining = list(answers)
+    prompts = []
+
+    def ask(messages, tools):
+        prompts.append(messages[-1]["content"])
+        calls = [SimpleNamespace(function=SimpleNamespace(name=name, arguments=json.dumps(args)))
+                 for name, args in (remaining.pop(0) if remaining else [("done", {"summary": "finished"})])]
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=calls, content=""))])
+    ask.prompts = prompts
+    return ask
+
+
+class SteadyScreen(FakeScreen):
+    """A FakeScreen that can tell cheaply whether it changed, like the real Windows one."""
+
+    def __init__(self, valid=True):
+        super().__init__()
+        self.valid = valid
+        self.looks = 0
+
+    def observe(self):
+        self.looks += 1
+        observation = super().observe()
+        observation.sample = self.screen_sample()
+        return observation
+
+    def screen_sample(self):
+        return f"{self.query}|{self.results}".encode().ljust(64, b" ")
+
+    def still_valid(self, element=None):
+        return self.valid
+
+
+def test_actions_planned_together_run_back_to_back_without_asking_again():
+    screen = SteadyScreen()
+    brain = batch_ai([("type_text", {"element": 1, "text": "cats", "append": True}), ("press_keys", {"keys": "tab"}),
+                      ("press_keys", {"keys": "enter"})],
+                     [("done", {"summary": "Searched for cats."})])
+    task = ComputerTask("search for cats", screen, brain)
+    assert task.run() == "Searched for cats."
+    assert screen.actions == [("press", "Search"), ("type", "cats"), ("keys", "tab"), ("keys", "enter")]
+    assert len(brain.prompts) == 2   # one question for all three actions, one for "done"
+
+
+def test_planned_actions_are_dropped_when_the_window_changed_under_them():
+    screen = SteadyScreen(valid=False)
+    brain = batch_ai([("click", {"element": 1}), ("type_text", {"text": "cats"})],
+                     [("done", {"summary": "ok"})])
+    ComputerTask("x", screen, brain).run()
+    assert screen.actions == [("press", "Search")]   # the typing was never done blind
+    assert len(brain.prompts) == 2
+
+
+def test_planned_actions_stop_when_the_user_grabs_the_mouse():
+    screen = SteadyScreen()
+    screen.cursor = lambda: (1500, 900)   # far from where Jarvis left it
+    brain = batch_ai([("click", {"element": 2}), ("click", {"element": 3})])
+    task = ComputerTask("x", screen, brain)
+    task._expected_cursor = (500, 500)
+    task._next_queued(screen.observe())   # nothing queued yet: nothing happens
+    task._queued = [({"action": "click", "element": 3}, "click")]
+    task._last_status = "ok"
+    assert task._next_queued(screen.observe()) is None and task._queued == []
+
+
+def test_an_unchanged_screen_is_not_read_twice():
+    screen = SteadyScreen()
+    task = ComputerTask("x", screen, ai(("press_keys", {"keys": "tab"}), ("done", {"summary": "ok"})))
+    task.run()
+    # one look after the key press (when it settled), reused for the next decision instead of reading it again
+    assert screen.looks == 2
+
+
+def test_dragging_needs_two_real_elements_and_asks_before_dropping_on_the_bin():
+    screen = FakeScreen()
+    drags = []
+    screen.drag = lambda start, end: drags.append((start, end)) or ""
+    brain = ai(("drag", {"element": 1}), ("drag", {"element": 1, "to_element": 2}), ("done", {"summary": "ok"}))
+    ComputerTask("x", screen, brain).run()
+    assert "to_element must be a number" in brain.prompts[1]
+    assert drags == [((160, 25), (360, 25))]
+
+    bin_view = Observation(elements=[Element(1, "list item", "notes.txt", rect=(0, 0, 10, 10)),
+                                     Element(2, "list item", "Recycle Bin", rect=(50, 0, 10, 10))])
+    assert "Recycle Bin" in computer_use.risk_of({"action": "drag", "element": 1, "to_element": 2},
+                                                 bin_view.elements[0], bin_view)
+
+
+def test_the_element_being_acted_on_is_reported_while_acting_only():
+    states = []
+    ComputerTask("x", FakeScreen(), ai(("click", {"element": 2}), ("done", {"summary": "ok"})),
+                 report=states.append).run()
+    acting = [s for s in states if s["state"] == "acting"]
+    assert acting and acting[0]["target"]["rect"] == [320, 10, 80, 30]
+    assert all(s["target"] is None for s in states if s["state"] != "acting")
+
+
+def test_screen_samples_differing_in_a_few_pixels_count_as_the_same_screen():
+    a = bytes(15360)
+    blink = bytearray(a)
+    blink[100:110] = b"\xff" * 10   # a caret
+    page = bytearray(a)
+    page[:3000] = b"\xff" * 3000    # a new page
+    assert computer_use.same_sample(a, bytes(blink))
+    assert not computer_use.same_sample(a, bytes(page))
+    assert not computer_use.same_sample(a, None)
+
+
+def test_after_opening_an_app_the_loop_waits_for_its_window_before_reading_the_screen():
+    screen = SteadyScreen()
+    calls = {"since_open": None}
+
+    def open_app(name):
+        calls["since_open"] = 0
+        return ""
+
+    def sample():
+        if calls["since_open"] is not None:
+            calls["since_open"] += 1
+            if calls["since_open"] > 4:   # the window shows up a moment later
+                screen.results = True
+        return f"{screen.query}|{screen.results}".encode().ljust(64, b" ")
+    screen.open_app, screen.screen_sample = open_app, sample
+    brain = ai(("open_app", {"name": "Notepad"}), ("done", {"summary": "ok"}))
+    ComputerTask("open notepad", screen, brain).run()
+    assert "Results for" in brain.prompts[1]   # the next decision saw the opened window, not the screen before it
+
+
+def test_a_call_written_as_plain_words_is_understood_when_it_is_unambiguous():
+    screen = FakeScreen()
+    view = screen.observe()
+    tools = computer_use.BASE_TOOLS
+    call = ComputerTask._plain_call
+    assert call("press_keys ctrl+a", view, tools) == {"action": "press_keys", "keys": "ctrl+a"}
+    assert call("open_app(Notepad)", view, tools) == {"action": "open_app", "name": "Notepad"}
+    assert call("click [3]", view, tools) == {"action": "click", "element": 3}
+    assert call("click button “Send message”", view, tools) == {"action": "click", "element": 3}
+    assert call("click button “Search”", view, tools) == {"action": "click", "element": 2}
+    assert call("click “Search”", view, tools) is None          # the field and the button are both called that
+    assert call("I think we should click it", view, tools) is None
+    assert call("teleport there", view, tools) is None
+
+
+def test_a_small_models_plain_word_answer_is_carried_out():
+    screen = FakeScreen()
+
+    def say(*answers):
+        remaining = list(answers)
+
+        def ask(messages, tools):
+            text = remaining.pop(0) if remaining else '{"name": "done", "arguments": {"summary": "ok"}}'
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=None, content=text))])
+        return ask
+    ComputerTask("x", screen, say("click button “Search”")).run()
+    assert ("press", "Search") in screen.actions
+
+
+def test_a_summary_that_is_the_calls_own_json_is_said_as_plain_words():
+    said = computer_use.tidy_summary('{"summary": "Text in Notepad has been replaced."}}', "Done.")
+    assert said == "Text in Notepad has been replaced."
+
+
+def test_a_web_address_typed_into_the_address_bar_is_opened_but_a_search_word_is_not():
+    class Browser(FakeScreen):
+        def observe(self):
+            bar = Element(1, "text field", "Address and search bar", self.query, (10, 10, 600, 30), focused=True)
+            return Observation(app="msedge", window="New tab", elements=[bar], cursor=self.cursor_at)
+    screen = Browser()
+    ComputerTask("x", screen, ai(("type_text", {"text": "wikipedia.org"}))).run()
+    assert ("keys", "enter") in screen.actions
+    screen = Browser()
+    ComputerTask("x", screen, ai(("type_text", {"text": "alan turing"}))).run()
+    assert ("keys", "enter") not in screen.actions
+
+
+def test_an_app_named_by_the_goal_is_brought_forward_before_the_first_decision():
+    screen = FakeScreen()
+    switched = []
+    screen.switch_window = lambda title: switched.append(title) or ""
+    ComputerTask("In Notepad, write a list", screen, ai(("done", {"summary": "ok"}))).run()
+    assert switched == ["Notepad"]
+    switched.clear()
+    ComputerTask("open Notepad and write a list", screen, ai(("done", {"summary": "ok"}))).run()
+    assert switched == []
+
+
+def test_the_mouse_grabbed_while_a_step_settles_pauses_before_the_next_action():
+    screen = FakeScreen()
+    hand = {"at": (500, 500)}
+    screen.cursor = lambda: hand["at"]
+    real_observe = screen.observe
+
+    def observe():
+        if screen.actions:   # the first action is done: the user grabs the mouse while the screen settles
+            hand["at"] = (1500, 900)
+        return real_observe()
+    screen.observe = observe
+    states = []
+    task = ComputerTask("x", screen, ai(("scroll", {"direction": "down"}), ("scroll", {"direction": "up"})),
+                        report=lambda s: states.append(s["state"]))
+    runner = threading.Thread(target=task.run)
+    runner.start()
+    deadline = time.time() + 5
+    while "paused" not in states and time.time() < deadline:
+        time.sleep(0.01)
+    task.stop()
+    runner.join(5)
+    assert "paused" in states
+    assert screen.actions == [("scroll", -5)]   # the second scroll never happened
+
+
+def test_grabbing_the_mouse_while_the_ai_thinks_pauses_at_once_and_drops_that_decision():
+    screen = FakeScreen()
+    hand = {"at": (500, 500)}
+    screen.cursor = lambda: hand["at"]
+    states = []
+    answers = iter([("scroll", {"direction": "down"}), ("click", {"element": 2})])
+
+    def slow_ai(messages, tools):
+        name, args = next(answers, ("done", {"summary": "ok"}))
+        if name == "click":   # while this one is being thought about, the user takes the mouse
+            hand["at"] = (1500, 900)
+            time.sleep(0.4)
+        call = SimpleNamespace(function=SimpleNamespace(name=name, arguments=json.dumps(args)))
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[call], content=""))])
+    task = ComputerTask("x", screen, slow_ai, report=lambda s: states.append(s["state"]))
+    runner = threading.Thread(target=task.run)
+    runner.start()
+    deadline = time.time() + 5
+    while "paused" not in states and time.time() < deadline:
+        time.sleep(0.01)
+    assert "paused" in states
+    task.resume()
+    runner.join(5)
+    assert ("press", "Search") not in screen.actions   # decided before the user's move: never carried out
+
+
+def test_plain_verbs_name_the_same_calls():
+    view = FakeScreen().observe()
+    call = ComputerTask._plain_call
+    assert call("switch to “File Explorer”", view, computer_use.BASE_TOOLS) == {"action": "switch_window",
+                                                                                 "title": "File Explorer"}
+    assert call("press ctrl+l", view, computer_use.BASE_TOOLS) == {"action": "press_keys", "keys": "ctrl+l"}
+    assert call("open Notepad", view, computer_use.BASE_TOOLS) == {"action": "open_app", "name": "Notepad"}

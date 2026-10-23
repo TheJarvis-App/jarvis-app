@@ -155,9 +155,11 @@ def test_earth_distance_with_unknown_places():
 
 
 # ---------- images (deterministic, non-AI open/save only) ----------
-def test_image_commands_need_a_pending_image():
+def test_image_commands_need_a_pending_image(monkeypatch):
     # No image has been shared/generated yet in this fresh session, so this isn't treated as an image command —
     # it falls through to the generic "open <app>" handler instead, which correctly reports no such app exists.
+    # The installed apps are given: the sandbox can't read the real list, and with no list the name is trusted.
+    monkeypatch.setattr(app.app_launcher, "installed_apps", lambda: {"notepad": "Notepad"})
     result, _ = route("open this image")
     assert result == "I couldn't find an app called this image."
 
@@ -202,3 +204,32 @@ def test_wrong_account_fix_is_recognized():
     # No prior Google action to reopen in this fresh session: still recognized as the command, answered gracefully.
     result, _ = route("wrong account")
     assert isinstance(result, str) and result
+
+
+# ---------- this computer's clock (the AI has none and used to make the time up) ----------
+@pytest.mark.parametrize("said", ["what time is it", "What time is it?", "Jarvis, what's the time", "what's the time now",
+                                  "what time is it here", "tell me the time please"])
+def test_the_time_here_comes_from_the_clock(said):
+    from datetime import datetime
+    result, _ = route(said)
+    now = datetime.now()
+    assert result in (f"It's {app.calendar_time.clock(now)}.",
+                      f"It's {app.calendar_time.clock(datetime.fromtimestamp(now.timestamp() - 60))}.")
+
+
+@pytest.mark.parametrize("said", ["what's the date", "what's today's date", "what day is it today", "what is today"])
+def test_the_date_comes_from_the_clock(said):
+    from datetime import datetime
+    now = datetime.now()
+    assert route(said)[0] == f"Today is {now.strftime('%A, %B')} {now.day}, {now.year}."
+
+
+@pytest.mark.parametrize("said", ["what time is it in Tokyo", "what time is my meeting", "what time does the store open"])
+def test_other_time_questions_are_not_the_local_clock(said):
+    assert app.local_time_reply(said) is None
+
+
+def test_the_ai_is_told_the_date_and_time_each_turn():
+    from datetime import datetime
+    now = datetime.now()
+    assert f"{now.strftime('%A, %B')} {now.day}, {now.year}" in app.now_for_the_ai()

@@ -3,10 +3,20 @@
 // has it (JARVIS_MAC_IDENTITY, set up by the GitHub workflow): every version then has the same signing identity, so
 // macOS keeps the permissions people gave Jarvis (Accessibility, microphone) across updates. Without the certificate
 // (a local build) it gets an ad-hoc signature, which Apple Silicon needs, but which changes with every build.
+// Every platform: the engine must be inside the app. Without it the app only says "spawn ... ENOENT" on every start
+// (a build made before `npm run backend`, or after a rename, packs an empty folder without complaint).
 const { execFileSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
 exports.default = async function afterPack(context) {
+  const resources = context.electronPlatformName === 'darwin'
+    ? path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
+    : path.join(context.appOutDir, 'resources');
+  const engine = path.join(resources, 'backend', context.electronPlatformName === 'win32' ? 'jarvis-backend.exe' : 'jarvis-backend');
+  if (!fs.existsSync(engine)) {
+    throw new Error(`Jarvis's engine is missing from the app (${engine}). Run "npm run backend" first.`);
+  }
   if (context.electronPlatformName !== 'darwin') return;
   const app = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
   const identity = process.env.JARVIS_MAC_IDENTITY || '-';

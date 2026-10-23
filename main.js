@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, systemPreferences, Tray, Menu, nativeImage, shell, dialog, globalShortcut, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, session, systemPreferences, Tray, Menu, nativeImage, shell, dialog, globalShortcut, screen, desktopCapturer } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { Backend } = require('./backend');
@@ -7,14 +7,17 @@ const { Backend } = require('./backend');
 // logs, downloaded models) before anything uses it — a rename on the same disk, nothing copied. If that can't be
 // done, the old folder simply stays in use. (Only the installed app: the development copy keeps its data in the
 // project folder and must never move the installed app's.)
+// A "Jarvis" folder holding only Chromium's cache (a development run makes one) doesn't count: the folder with
+// Jarvis's own files in it wins, or the user would start over with no settings, pairings or models.
 if (app.isPackaged) {
   try {
     const current = app.getPath('userData');
     const old = path.join(path.dirname(current), 'Jervis');
-    if (old !== current && fs.existsSync(old)) {
+    const hasData = (dir) => ['settings.json', 'phone_devices.json', 'transcripts', 'models'].some((f) => fs.existsSync(path.join(dir, f)));
+    if (old !== current && fs.existsSync(old) && hasData(old) && !hasData(current)) {
       if (!fs.existsSync(current)) fs.renameSync(old, current);
+      else app.setPath('userData', old);
     }
-    if (!fs.existsSync(current) && fs.existsSync(old)) app.setPath('userData', old);
   } catch (_) { /* keep going with whatever folder is there */ }
 }
 
@@ -161,7 +164,8 @@ const START_CHOICE = path.join(app.getPath('userData'), 'start-at-login-chosen')
 function startsAtLogin() {
   if (!app.isPackaged) return false;
   if (process.platform === 'darwin') return fs.existsSync(LAUNCH_AGENT);
-  return app.getLoginItemSettings({ args: ['--hidden'], name: 'Jarvis' }).openAtLogin;
+  // not openAtLogin: Electron 32 reads back its own "Jarvis.exe --hidden" entry as no arguments and says false
+  return app.getLoginItemSettings({ args: ['--hidden'], name: 'Jarvis' }).executableWillLaunchAtLogin;
 }
 
 function setStartAtLogin(on) {
@@ -209,6 +213,13 @@ function applyStartAtLogin() {
     log(`Starting at sign-in: ${on ? 'on' : 'could not be turned on'} (first start).`);
   } else if (process.platform === 'darwin' && startsAtLogin()) {
     setStartAtLogin(true);                   // refresh the app's location
+  } else if (process.platform === 'win32') {
+    // An update from before the rename: the user's "Jervis" entry points at Jervis.exe, which the installer removed.
+    const oldExe = path.join(path.dirname(process.execPath), 'Jervis.exe');
+    if (app.getLoginItemSettings({ path: oldExe, args: ['--hidden'], name: 'Jervis' }).executableWillLaunchAtLogin) {
+      const on = setStartAtLogin(true);
+      log(`Starting at sign-in: carried over from Jervis (${on ? 'on' : 'could not be turned on'}).`);
+    }
   }
 }
 ipcMain.on('restart-backend', () => backend && backend.restart());
@@ -217,7 +228,8 @@ ipcMain.on('restart-backend', () => backend && backend.restart());
 // While Jarvis uses the mouse and keyboard, a glowing edge and a bar with Pause and Stop sit on top of everything.
 // The overlay never takes focus and lets clicks through (except on its bar), is left out of screenshots, and goes
 // away a few seconds after the task ends. The backend decides everything; this only shows it and relays buttons.
-const CONTROL_ACTIVE = new Set(['starting', 'observing', 'thinking', 'acting', 'waiting', 'paused', 'listening']);
+const CONTROL_ACTIVE = new Set(['starting', 'planning', 'observing', 'thinking', 'acting', 'verifying', 'waiting',
+  'paused', 'cancelling', 'recovering', 'listening']);
 const STOP_ACCELERATOR = 'Control+Alt+Q';
 const STOP_LABEL = process.platform === 'darwin' ? '⌃⌥Q' : 'Ctrl+Alt+Q';
 let overlay = null;
@@ -319,13 +331,22 @@ ipcMain.on('control-event', (_event, message) => {
   }
 });
 ipcMain.on('control-overlay-action', (_event, action) => {
-  if (['stop', 'pause', 'resume'].includes(action)) relayControl('control_command', { action });
+  if (['stop', 'cancel', 'pause', 'resume'].includes(action)) relayControl('control_command', { action });
 });
 ipcMain.on('control-overlay-answer', (_event, answer) => {
   if (answer && typeof answer.id === 'string') relayControl('control_answer', { id: answer.id, allow: answer.allow === true });
 });
+// While the Take Control panel shows its live view: this window is left out of screen captures, so the view shows the
+// desktop behind it (not itself, over and over), like the overlay.
+ipcMain.on('tc-capture-hidden', (_event, hidden) => { if (win && !win.isDestroyed()) win.setContentProtection(Boolean(hidden)); });
+ipcMain.on('control-overlay-task', (_event, goal) => {
+  const text = String(goal || '').trim().slice(0, 300);
+  if (text) relayControl('control_command', { action: 'task', goal: text });
+});
 ipcMain.on('control-overlay-hover', (_event, over) => {
   if (!overlay) return;
+  // Over the card (or typing a task in it): it takes clicks and keys; elsewhere everything goes through to the apps.
+  overlay.setFocusable(Boolean(over));
   if (over) overlay.setIgnoreMouseEvents(false); else overlay.setIgnoreMouseEvents(true, { forward: true });
 });
 
@@ -354,6 +375,16 @@ app.whenReady().then(async () => {
   if (quitRequested) return;   // nothing was running: nothing to do
   // The window listens to the microphone only to measure how loud you are (the orb spins with your voice).
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => callback(permission === 'media'));
+  // Take Control's live view (takecontrol/live.js): the screen Jarvis works on, for Jarvis's own pages only, with no
+  // picker. The operating system's own capture keeps it moving however long the AI takes to think.
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    if (!String(request.frame?.url || '').startsWith('file://')) { callback({}); return; }
+    desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }).then((sources) => {
+      const primary = String(screen.getPrimaryDisplay().id);
+      const source = sources.find((s) => s.display_id === primary) || sources[0];
+      callback(source ? { video: source } : {});
+    }).catch(() => callback({}));
+  });
   if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone').catch(() => {});
   backend = new Backend({ app, appDir: __dirname, log, onState: setBackendState });
   try {

@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="weather/weather.css" />
   <link rel="stylesheet" href="clock/worldclock.css" />
   <link rel="stylesheet" href="coding/coding.css" />
+  <link rel="stylesheet" href="takecontrol/takecontrol.css" />
   <!-- The new look, layered over style.css while <html data-ui="next">. Settings has "Classic look" to go back
        (remembered on this computer); index.html?ui=classic opens the classic look once. -->
   <link rel="stylesheet" href="style.next.css" />
@@ -139,10 +140,95 @@
             <li data-cat="more"><div class="tip tip-static"><svg class="tip-ic" aria-hidden="true"><use href="#tip-more"/></svg><span class="tip-text"><b>Type instead of talking</b><span>Press / to type, F for full screen</span></span></div></li>
           </ul>
         </section>
+
+        <!-- Quick controls, anchored at the bottom of the rail: the microphone, Take Control, and what Jarvis is doing.
+             Every one reflects the engine's real state (see renderer.js, "Sidebar controls"). -->
+        <section class="card side-controls" id="sideControls" aria-label="Quick controls">
+          <div class="sc-row">
+            <button type="button" class="sc-btn" id="scMic" aria-pressed="false" disabled>
+              <svg class="sc-ic ic-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+              <svg class="sc-ic ic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M9 9v2a3 3 0 0 0 5.1 2.1M15 9.3V6a3 3 0 0 0-5.9-.8M5 11a7 7 0 0 0 11.2 5.6M19 11a7 7 0 0 1-.7 3M12 18v3"/></svg>
+              <span class="sc-text"><span class="sc-label">Microphone</span><span class="sc-state" id="scMicState">On</span></span>
+            </button>
+            <button type="button" class="sc-btn" id="scControl" aria-pressed="false" disabled>
+              <svg class="sc-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l6.5 17 2.3-7.2L21 10.5z"/></svg>
+              <span class="sc-text"><span class="sc-label">Take control</span><span class="sc-state" id="scControlState">Off</span></span>
+            </button>
+          </div>
+          <div class="sc-task" id="scTask" hidden>
+            <p class="sc-detail" id="scDetail" aria-live="polite"></p>
+            <div class="sc-actions">
+              <button type="button" class="ghost" id="scPause">Pause</button>
+              <button type="button" class="ghost" id="scCancel" title="Stop this task; stay in control">Cancel task</button>
+            </div>
+          </div>
+          <p class="sc-status" id="scStatus" role="status"><i aria-hidden="true"></i><span id="scStatusText">Connecting…</span></p>
+        </section>
       </aside>
 
       <!-- ============ Center: the orb ============ -->
       <section class="stage">
+        <!-- Take Control: what Jarvis is doing on the computer, step by step, and the buttons to steer it. Shown in
+             place of the orb while control is on (takecontrol/takecontrol.js); it only draws what the engine reports. -->
+        <section class="tc-deck" id="tcDeck" hidden aria-labelledby="tcGoal">
+          <header class="tc-head">
+            <span class="tc-kicker">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l6.5 17 2.3-7.2L21 10.5z"/></svg>
+              Take Control
+            </span>
+            <span class="tc-status" id="tcStatus" role="status"><i aria-hidden="true"></i><span id="tcStatusText">Ready</span></span>
+            <span class="tc-meta" id="tcMeta"></span>
+            <button type="button" class="ghost tc-close" id="tcClose" hidden>Close</button>
+          </header>
+          <h2 class="tc-goal" id="tcGoal">Ready for a task</h2>
+          <div class="tc-progress" id="tcProgress" role="progressbar" aria-label="Steps used" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"><i id="tcProgressBar"></i></div>
+          <p class="tc-now" id="tcNow" aria-live="polite"></p>
+          <div class="tc-ask" id="tcAsk" hidden role="alert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5v.01"/></svg>
+            <p id="tcAskText"></p>
+            <button type="button" class="tc-btn primary" id="tcAllow">Allow</button>
+            <button type="button" class="tc-btn" id="tcDeny">Don’t</button>
+          </div>
+          <div class="tc-result" id="tcResult" hidden>
+            <span class="tc-result-ic" aria-hidden="true"></span>
+            <div><p id="tcResultText"></p><span class="tc-check" id="tcCheck" hidden></span></div>
+          </div>
+          <div class="tc-body">
+            <div class="tc-log">
+              <details class="tc-plan" id="tcPlanWrap" hidden open>
+                <summary>Plan</summary>
+                <ol id="tcPlan"></ol>
+              </details>
+              <div class="tc-log-head"><h3>Steps</h3><button type="button" class="tc-link" id="tcNotes" aria-pressed="false">Show details</button></div>
+              <ol class="tc-steps" id="tcSteps"></ol>
+              <div class="tc-empty" id="tcEmpty">
+                <p>Each step Jarvis takes, and whether it worked, shows up here. For example:</p>
+                <div class="tc-examples" id="tcExamples"></div>
+              </div>
+            </div>
+            <figure class="tc-screen">
+              <div class="tc-shot">
+                <video id="tcLive" muted playsinline hidden aria-label="Live view of the screen"></video>
+                <img id="tcShot" alt="" hidden />
+                <span class="tc-live-tag" id="tcLiveTag" hidden>Live</span>
+                <div class="tc-target" id="tcTarget" hidden></div>
+                <span class="tc-shot-empty" id="tcShotEmpty">A picture of the screen appears here once Jarvis looks at it.</span>
+              </div>
+              <figcaption><span class="tc-app" id="tcApp">No app yet</span><span class="tc-age" id="tcAge"></span></figcaption>
+            </figure>
+          </div>
+          <footer class="tc-foot">
+            <form class="tc-task" id="tcForm" autocomplete="off">
+              <input id="tcInput" type="text" maxlength="300" spellcheck="false" placeholder="Give Jarvis a task…" aria-label="New task for Take Control" />
+              <button type="submit" class="tc-btn primary" id="tcRun">Run task</button>
+            </form>
+            <div class="tc-controls">
+              <button type="button" class="tc-btn" id="tcPause">Pause</button>
+              <button type="button" class="tc-btn" id="tcCancel" title="Stop this task; stay in control for the next one">Cancel task</button>
+              <button type="button" class="tc-btn danger" id="tcEnd" title="Stop, and give you back the mouse and keyboard">End control</button>
+            </div>
+          </footer>
+        </section>
         <div class="orb-wrap" id="orbWrap">
           <canvas id="orbCanvas" aria-label="Jarvis voice orb" role="img"></canvas>
           <i class="reticle tl"></i><i class="reticle tr"></i><i class="reticle bl"></i><i class="reticle br"></i>
@@ -165,7 +251,7 @@
           </button>
           <input type="file" id="imageFileInput" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp" hidden />
           <span class="type-prompt" aria-hidden="true">&#x203A;</span>
-          <input id="typeInput" type="text" maxlength="500" spellcheck="false" placeholder="Type a message or a number to Jarvis…" aria-label="Type to Jarvis" />
+          <input id="typeInput" type="text" maxlength="500" spellcheck="false" placeholder="Type to Jarvis…" aria-label="Type to Jarvis" />
           <button type="submit" class="type-send" id="typeSend" aria-label="Send" title="Send (Enter)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
           </button>
@@ -188,7 +274,7 @@
             <input type="range" id="speakVolSlider" min="0" max="100" step="1" value="100" aria-label="Jarvis's speaking volume" />
           </div>
           </div>
-          <p class="mic-hint"><span id="pillText">Microphone on</span> · press <kbd>M</kbd> to <span id="buttonHint">mute</span> · <kbd>/</kbd> to type</p>
+          <p class="mic-hint"><span id="pillText">Microphone on</span><span class="mic-keys"> · press <kbd>M</kbd> to <span id="buttonHint">mute</span> · <kbd>/</kbd> to type</span></p>
         </div>
       </section>
 
@@ -379,5 +465,7 @@
   <script src="weather/panel.js"></script>
   <script src="clock/worldclock.js"></script>
   <script src="coding/coding.js"></script>
+  <script src="takecontrol/live.js"></script>
+  <script src="takecontrol/takecontrol.js"></script>
 </body>
 </html>

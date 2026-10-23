@@ -125,7 +125,7 @@
     }
 
     function frame(now) {
-      if (document.hidden || document.body.classList.contains('scene-paused')) {   // nothing to see: do no work
+      if (document.hidden || document.body.classList.contains('scene-paused') || document.body.classList.contains('orb-hidden')) {   // nothing to see: do no work
         last = now;
         requestAnimationFrame(frame);
         return;

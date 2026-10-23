@@ -66,13 +66,13 @@
     ${EndIf}
 
     ${If} $R0 == 0
-      nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}" /FI "USERNAME eq %USERNAME%"`
+      nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /FI "USERNAME eq %USERNAME%"`
       Pop $R2
-      nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /T /IM "jarvis-backend.exe" /FI "USERNAME eq %USERNAME%"`
+      nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /IM "jarvis-backend.exe" /FI "USERNAME eq %USERNAME%"`
       Pop $R2
-      nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /T /IM "${OLD_EXE}" /FI "USERNAME eq %USERNAME%"`
+      nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /IM "${OLD_EXE}" /FI "USERNAME eq %USERNAME%"`
       Pop $R2
-      nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /T /IM "${OLD_BACKEND}" /FI "USERNAME eq %USERNAME%"`
+      nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /IM "${OLD_BACKEND}" /FI "USERNAME eq %USERNAME%"`
       Pop $R2
       !insertmacro _JARVIS_WAIT_UNTIL_CLOSED $R0 20
     ${EndIf}
@@ -115,4 +115,8 @@
     DeleteRegValue SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" UninstallString
     DeleteRegValue SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" QuietUninstallString
   ${EndIf}
+  ; An old install whose entry lost its UninstallString (a broken reinstall) skips the above: its shortcuts still go.
+  ; Its Jervis.exe stays: the sign-in entry still names it until Jarvis carries that over (main.js applyStartAtLogin).
+  Delete "$SMPROGRAMS\${OLD_NAME}.lnk"
+  Delete "$DESKTOP\${OLD_NAME}.lnk"
 !macroend

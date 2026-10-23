@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import collections
 import json
 import os
@@ -31,6 +32,7 @@ import webbrowser
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 import hmac
+import io
 import random
 import signal
 import sys
@@ -61,7 +63,9 @@ import google_accounts
 import local_llm
 import local_ai
 import stt_local
+import blender_build
 import blender_commands
+import blender_edit
 import blender_control
 import computer_use
 import spotify_local
@@ -435,6 +439,11 @@ _phone_status = None
 latest_ui_updates = {}  # last payload per type, replayed to windows that connect later
 latest_ui_updates["speak_volume"] = {"type": "speak_volume",
                                      "data": {"volume": speak_volume(), "muted": speak_muted()}}
+# Whether the listening loop is muted, as the engine applies it (every window's mic buttons draw this).
+latest_ui_updates["mic_state"] = {"type": "mic_state", "data": {"muted": False}}
+if AUDIO_OFF:   # nothing is recorded at all: the window must not show a microphone that seems to be listening
+    latest_ui_updates["mic"] = {"type": "mic", "data": {"ok": False, "message": "Listening is turned off on this "
+                                                                               "computer: type to Jarvis instead."}}
 
 
 # The window's graphs, globe and planets: the phone shows them too, with the same drawing code (see phone_visuals.py),
@@ -573,12 +582,12 @@ async def handle_client(websocket):
                 data = json.loads(message)
             except Exception:
                 continue
-            if data.get("type") == "mute":
-                mic_muted.set()
-                mute_changes[0] += 1   # anything heard before this, still being transcribed, is thrown away
-            elif data.get("type") == "unmute":
-                mic_muted.clear()
-                mute_changes[0] += 1
+            if data.get("type") in ("mute", "unmute"):
+                if (data["type"] == "mute") != mic_muted.is_set():
+                    mic_muted.set() if data["type"] == "mute" else mic_muted.clear()
+                    mute_changes[0] += 1   # anything heard before this, still being transcribed, is thrown away
+                # What the listening loop now really does, to every window (the dock's and the sidebar's buttons).
+                send_ui_update("mic_state", {"muted": mic_muted.is_set()})
             elif data.get("type") == "set_speak_volume":
                 try:
                     volume = max(0, min(100, int(data.get("volume", 100))))
@@ -631,11 +640,20 @@ async def handle_client(websocket):
                 answer_control_question(str(data.get("id", "")), data.get("allow") is True)
             elif data.get("type") == "control_command":
                 action = data.get("action")
-                if action == "stop":
-                    if computer_task is not None:
-                        computer_task.stop()
-                    if session_active():
-                        end_control_session()
+                if action in ("stop", "release"):
+                    stop_all_control()
+                elif action == "cancel":   # this task only; a "take control" session stays open
+                    cancel_control_task()
+                elif action == "start":
+                    reply = start_control_session()
+                    broadcast("ai", reply)
+                elif action == "task":   # the Take Control panel's task box: always a goal, never chat
+                    goal = " ".join(str(data.get("goal") or "").split())[:300]
+                    if goal:
+                        broadcast("user", goal, to_phone=False)
+                        # Off the connection's loop: replacing a running task can wait several seconds for it to stop.
+                        threading.Thread(target=lambda: broadcast("ai", start_computer_task(goal, persistent=True)),
+                                         daemon=True, name="control-task").start()
                 elif action == "pause" and control_active():   # pausing only means something mid-task
                     computer_task.pause()
                 elif action == "resume" and computer_task is not None:
@@ -1456,6 +1474,33 @@ def show_world_clock(names: list, difference: bool = False, daylight: bool = Fal
         clock_state.update(open=True, places=shown[-worldclock.MAX_PLACES:], at=time.time())
         text += " The world clock is on your screen." if mode == "set" else " I added it to the world clock."
     return text
+
+
+_LOCAL_TIME = re.compile(r"(?:what(?:'s| is)?|tell me) (?:the )?(?:current |exact )?time(?: is it| it is)?(?: now| right now| here)?"
+                         r"|what time is it(?: now| right now| here)?|do you (?:know|have) the time|time check")
+_LOCAL_DATE = re.compile(r"(?:what(?:'s| is)?|tell me) (?:the |today's )?date(?: today| is it)?|what day is (?:it|today)(?: today)?"
+                         r"|what's today|what is today")
+
+
+def local_time_reply(text: str):
+    """"What time is it?" / "what's the date?": answered from this computer's clock. The AI has no clock and makes
+    one up. None for anything else (a time somewhere else is the world clock's, above)."""
+    n = " ".join(re.sub(r"[^a-z' ]", " ", (text or "").lower().replace("’", "'")).split())
+    n = re.sub(r"^(?:(?:hey|ok|okay) )?(?:jarvis |jervis )?(?:please )?", "", n)
+    n = re.sub(r" (?:please|jarvis)$", "", n)
+    now = datetime.now()
+    day = f"{now.strftime('%A, %B')} {now.day}"
+    if _LOCAL_TIME.fullmatch(n):
+        return f"It's {calendar_time.clock(now)}."
+    if _LOCAL_DATE.fullmatch(n):
+        return f"Today is {day}, {now.year}."
+    return None
+
+
+def now_for_the_ai() -> str:
+    """The date and time, for the AI's instructions on each turn (it has no clock of its own)."""
+    now = datetime.now()
+    return f"\n\nRight now it is {now.strftime('%A, %B')} {now.day}, {now.year}, {calendar_time.clock(now)} on this computer."
 
 
 def handle_clock_choice(text: str):
@@ -3387,6 +3432,12 @@ _CONTROL_STOP = re.compile(r"(?:stop|stop it|stop now|stop that|cancel|abort|eno
                            r"i'll take over|let me do it|stop using (?:my |the )?(?:computer|mouse)|"
                            r"stop controlling (?:my |the )?(?:computer|mouse)|stop computer control|"
                            r"release control|give me (?:back )?control|exit computer control)")
+# Within a persistent session these end control itself; plain "stop"/"cancel" only cancel the task that's running
+# (see handle_control_voice). Ctrl+Alt+Q and the overlay's Stop button still end everything at once.
+_CONTROL_RELEASE = re.compile(r"(?:take over|i'll take over|let me do it|stop using (?:my |the )?(?:computer|mouse)|"
+                              r"stop controlling (?:my |the )?(?:computer|mouse)|stop computer control|"
+                              r"release control|give me (?:back )?control|exit computer control|end (?:computer )?control|"
+                              r"stop taking control|you can stop now)")
 _CONTROL_PAUSE = re.compile(r"(?:pause|wait|hold on|hang on|one (?:second|moment|sec))")
 _CONTROL_RESUME = re.compile(r"(?:continue|resume|go on|go ahead|carry on|keep going|you can continue)")
 # Once a session is active, free text that doesn't match a more specific command (open app, search, etc.) is routed
@@ -3394,7 +3445,9 @@ _CONTROL_RESUME = re.compile(r"(?:continue|resume|go on|go ahead|carry on|keep g
 _SESSION_ACTION_VERB = re.compile(
     r"\b(open|create|make|add|click|type|press|scroll|save|duplicate|move|delete|remove|close|switch|arrange|put|"
     r"build|draw|set|change|turn|select|rotate|scale|resize|rename|group|render|export|undo|redo|go to|go back|"
-    r"bring)\b", re.I)
+    r"bring|"
+    # changing what's there (blender_edit.py): "widen the path", "improve the pool", "connect the pool and the house"
+    r"widen|enlarge|shrink|lengthen|expand|improve|enhance|upgrade|connect|paint|clear|shift|place|lay)\b", re.I)
 _SESSION_QUESTION = re.compile(
     # "do"/"does"/"is"/"are" only count as a question starter before a subject ("do you", "is it true") — not before
     # an object pronoun ("do that again", "do it"), which is an imperative repeat command, not a question.
@@ -3503,8 +3556,27 @@ def answer_control_question(ask_id: str, allow: bool) -> bool:
     return True
 
 
+def _control_preview(observation) -> None:
+    """A small picture of the screen Jarvis is working on, for the window's Take Control panel (never the phone)."""
+    image = observation.screenshot.copy()
+    image.thumbnail((640, 400))
+    buffer = io.BytesIO()
+    image.convert("RGB").save(buffer, "JPEG", quality=62)
+    send_ui_update("control_preview", {"image": "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode(),
+                                       "app": observation.app, "window": observation.window, "at": time.time()})
+
+
+# Plain on-screen tasks (not Blender, which has its own checks): a short plan first, "done" checked against the
+# screen before it's believed, and what Jarvis sees shown in the window.
+CLOSED_LOOP = {"plan_first": True, "verify": True, "preview": _control_preview}
+
+
 def _report_control(state: dict) -> None:
-    send_ui_update_once({"type": "control", "data": state})
+    # "session": whether a "take control" session outlives this task; "since": when this state began, so a long
+    # step shows how long it has been running instead of looking frozen. Kept for windows that connect later.
+    payload = {"type": "control", "data": {**state, "session": session_active(), "since": time.time()}}
+    latest_ui_updates["control"] = payload
+    send_ui_update_once(payload)
 
 
 def control_active() -> bool:
@@ -3519,7 +3591,33 @@ def session_active() -> bool:
 def end_control_session(final_state: str = "stopped", detail: str = "Stopped. You have control again.") -> None:
     global control_session
     control_session = None
+    clear_ui_update("control_preview")
     _report_control({"state": final_state, "detail": detail, "goal": "", "step": 0, "maxSteps": 0})
+
+
+def stop_all_control() -> None:
+    """The emergency stop (Ctrl+Alt+Q, the overlay's Stop, "release control"): the task and the session both end."""
+    if computer_task is not None:
+        computer_task.stop()
+    if session_active():
+        end_control_session()
+
+
+def cancel_control_task() -> bool:
+    """Cancel only the task that's running; a persistent session stays open and goes back to listening once the task
+    has stopped (its own run() reports that). False when no task was running."""
+    task = computer_task
+    if task is None or task.state in ("completed", "stopped", "error"):
+        return False
+    task.stop()
+    return True
+
+
+def start_control_session() -> str:
+    """The sidebar's "Take control": a persistent session waiting for commands — asked first, as Settings say."""
+    if session_active():
+        return "I'm already in control — tell me what to do."
+    return start_computer_task("", persistent=True)
 
 
 def _is_explicit_control_phrase(text: str) -> bool:
@@ -3622,7 +3720,8 @@ def _which_app_first(goal: str):
     return value[:4] if status == "ambiguous" else None
 
 
-def start_computer_task(goal: str, scripted=None, after=None, persistent: bool = False, blender: bool = False) -> str:
+def start_computer_task(goal: str, scripted=None, after=None, persistent: bool = False, blender: bool = False,
+                        bridge_only: bool = False) -> str:
     """Use the mouse and keyboard for `goal`: worked out step by step by the AI, or, with `scripted`, a list of
     known steps (see computer_use.ScriptedTask). Either way: asked first (Settings), shown, and stoppable.
 
@@ -3630,15 +3729,20 @@ def start_computer_task(goal: str, scripted=None, after=None, persistent: bool =
     a chair" -> "make it wooden") don't need "take control" said again and don't re-ask permission. True only for
     goals that themselves said "take control…" (see handle_direct_command); a bare one-off like "click Save" stays
     exactly as one-shot as it is today. Once a session is already open, permission is skipped regardless of this
-    flag — whatever is already granted covers anything said next."""
+    flag — whatever is already granted covers anything said next.
+
+    `bridge_only`: `scripted` steps that only send code to Blender's bridge (a staged build): like the everyday
+    Blender commands, they need no mouse, so no permission question and the "off" setting doesn't apply."""
     global computer_task, control_session
     mode = (os.getenv("JARVIS_COMPUTER_CONTROL") or "ask").strip().lower()
+    if bridge_only:
+        mode = "on"
     if mode == "off":
         return "Using the mouse and keyboard is turned off. You can allow it in Settings, under Computer control."
     if not _make_room_for_new_task():
         return "Still working on that — one moment."
     env = computer_environment()
-    ok, why = env.available()
+    ok, why = (True, "") if bridge_only else env.available()
     if not ok:
         return why
 
@@ -3671,9 +3775,13 @@ def start_computer_task(goal: str, scripted=None, after=None, persistent: bool =
 
     def report(state: dict) -> None:
         # Between goals in a persistent session, "completed"/"error" would read (and look, in the overlay) as
-        # control having ended; "listening" keeps it visibly active while saying the same thing.
-        if keep_session and state.get("state") in ("completed", "error"):
-            state = {**state, "state": "listening"}
+        # control having ended; "listening" keeps it visibly active while saying the same thing. So does a task
+        # that was only cancelled: the session it ran in is still open.
+        if keep_session and (state.get("state") in ("completed", "error") or
+                             (state.get("state") == "stopped" and session_active())):
+            state = {**state, "state": "listening", "outcome": state.get("state")}   # how the task ended, for the panel
+            if computer_task is not None and computer_task.stopped:
+                state["detail"] = "Cancelled that. I'm still in control — tell me what to do next."
         _report_control(state)
 
     def run():
@@ -3718,13 +3826,16 @@ def start_computer_task(goal: str, scripted=None, after=None, persistent: bool =
 
             task = None
             if task_scripted:
-                task = computer_use.ScriptedTask(goal, task_scripted, report=report, cursor=spotify_local.cursor)
+                # Bridge-only steps never touch the mouse, so the user's own mouse moves don't pause them.
+                task = computer_use.ScriptedTask(goal, task_scripted, report=report,
+                                                 cursor=None if bridge_only else spotify_local.cursor)
             elif blender_context:
                 bridge = blender_control.ensure_bridge(session, confirm=ask_control_question)
+                session.confirm = ask_control_question   # "delete everything" asks first (blender_edit.py)
                 if not bridge:   # Blender unreachable, or the user declined restarting it: fall back to plain clicking
                     task = computer_use.ComputerTask(goal, env, _ask_ai_for_control, report=report,
                                                      confirm=ask_control_question, vision=vision, max_steps=steps,
-                                                     finish_after=finishing_actions(goal))
+                                                     finish_after=finishing_actions(goal), **CLOSED_LOOP)
                 else:
                     deterministic = blender_commands.steps_for(goal, session, bridge)
                     if deterministic:
@@ -3745,12 +3856,13 @@ def start_computer_task(goal: str, scripted=None, after=None, persistent: bool =
             else:
                 task = computer_use.ComputerTask(goal, env, _ask_ai_for_control, report=report,
                                                  confirm=ask_control_question, vision=vision, max_steps=steps,
-                                                 finish_after=finishing_actions(goal))
+                                                 finish_after=finishing_actions(goal), **CLOSED_LOOP)
 
             if task is not None:
                 computer_task = task
-                task._report("starting", "Getting out of your way…")   # the window steps aside (see main.js)
-                if connected_clients:
+                # the window steps aside (see main.js), showing Blender (or the app) being worked on
+                task._report("starting", "Starting the build…" if bridge_only else "Getting out of your way…")
+                if connected_clients and not bridge_only:
                     time.sleep(1.2)
                 result = task.run()
                 stopped = task.state == "stopped"
@@ -3784,8 +3896,10 @@ def start_computer_task(goal: str, scripted=None, after=None, persistent: bool =
         return f"{question} Say yes or no."
     if bare:
         return "Sure, I'm ready."
+    if bridge_only:
+        return getattr(scripted, "intro", None) or blender_build.BuildSteps.intro
     if already_active:
-        return "Okay."
+        return _starting_reply(goal, session)
     return (f"Okay, I'm using the computer to {goal}. Move the mouse, press {computer_use.STOP_SHORTCUT}, "
             "or say stop to take over.")
 
@@ -3804,11 +3918,13 @@ def handle_control_voice(text: str):
             pending_control_question = None
             return "Okay, I won't."
     if session_active() or control_active():
-        if _CONTROL_STOP.fullmatch(n):
-            if computer_task is not None:
-                computer_task.stop()
-            if session_active():
-                end_control_session()
+        if _CONTROL_STOP.fullmatch(n) or _CONTROL_RELEASE.fullmatch(n):
+            if session_active() and control_active() and not _CONTROL_RELEASE.fullmatch(n):
+                # A running task inside a "take control" session: cancel that task, keep the session.
+                cancel_control_task()
+                return ("Stopped that. I'm still in control — tell me what to do next, or say “release control” "
+                        "to take it back.")
+            stop_all_control()
             return "Stopping. You have control."
         if control_active():
             if _CONTROL_PAUSE.fullmatch(n):
@@ -3887,6 +4003,9 @@ def handle_direct_command(text: str):
     clock_reply = handle_clock_choice(text) or handle_clock_command(text)   # "what time is it in Tokyo?"
     if clock_reply:
         return clock_reply
+    here_reply = local_time_reply(text)   # "what time is it?": this computer's clock, never the AI's guess
+    if here_reply:
+        return here_reply
     if (planets.parse_request(text) or {}).get("fact"):   # "how far is mars from earth" is about the planets, not two towns
         return handle_planet_command(text)
     earth_reply = handle_earth_choice(text) or handle_earth_command(text) or handle_earth_places_answer(text)
@@ -4154,11 +4273,25 @@ def handle_direct_command(text: str):
         return start_computer_task(goal, persistent=_is_explicit_control_phrase(text))
     if session_active() and _ACKNOWLEDGEMENT.fullmatch(text.strip()):
         return "Okay."   # "okay, thank you" between commands: nothing to do, and no reason to wait for the AI
-    if session_active() and looks_like_session_goal(text):
+    typed = blender_commands.fix_typos(text)   # "delite evrything in bender" is still a command
+    if session_active() and looks_like_session_goal(typed):
         # Routed through start_computer_task even while a task is already running: a new command replaces a stuck
         # one (see _make_room_for_new_task) instead of silently falling through to the general chat AI.
-        return start_computer_task(text.strip(), persistent=True)
+        return start_computer_task(typed.strip(), persistent=True)
     return None
+
+
+def _starting_reply(goal: str, session=None) -> str:
+    """What Jarvis says as the next goal of a control session starts: what he's about to do, never a bare "Okay"
+    that sounds like nothing will happen. Blender's own words only while the session works in Blender."""
+    said = blender_commands.normalize(goal)
+    if session is not None and session.blender is not None:
+        if blender_build.parse(said):
+            return blender_build.BuildSteps.intro
+        intro = blender_edit.intro_for(said, session)
+        if intro:
+            return intro
+    return f"On it: {goal.strip().rstrip('.')}. Say stop to cancel."
 
 
 _ACKNOWLEDGEMENT = re.compile(r"(?:(?:ok(?:ay)?|thanks?|thank you(?: so much)?|cool|great|nice|got it|alright|"
@@ -4172,7 +4305,12 @@ blender_launch = None      # the thread opening Blender with its bridge, while i
 def is_blender_goal(goal: str, said: str = "") -> bool:
     """A concrete Blender instruction ("create a cube", "make the cube bigger"), with Blender open (or opening), or
     with "Blender" said outright. Not "take control …" or "open Blender …" sentences: those have their own paths."""
-    said = said or goal
+    said = blender_commands.fix_typos(said or goal)
+    named = bool(re.search(r"\bblender\b", said, re.I))
+    launching = blender_launch is not None and blender_launch.is_alive()
+    if goal and blender_commands.is_scene_question(goal):
+        # "What's in the scene?" is a question, which the checks below turn away; only Blender can answer it.
+        return named or launching or blender_control.blender_running()
     if not goal or not looks_like_session_goal(goal) or _is_explicit_control_phrase(said):
         return False
     if re.search(r"\b(?:open|launch|start)\s+(?:up\s+)?blender\b", said, re.I):
@@ -4180,9 +4318,11 @@ def is_blender_goal(goal: str, said: str = "") -> bool:
     known = blender_commands.is_command(goal)
     if not (known or (_BLENDER_THING.search(said) and blender_commands.looks_concrete(goal))):
         return False
-    named = bool(re.search(r"\bblender\b", said, re.I))
-    launching = blender_launch is not None and blender_launch.is_alive()
-    return (known and named) or launching or blender_control.blender_running()
+    if (known and named) or launching or blender_control.blender_running():
+        return True
+    # No Blender window found (minimised to another desktop, or one with no window at all), but an edit of the scene
+    # ("move the pool"): Blender is there if its bridge answers. Only for those, so other sentences never wait.
+    return blender_edit.is_edit(goal) and blender_control.BlenderBridge().ping(timeout=0.5)
 
 
 def run_blender_directly(goal: str):
@@ -4202,9 +4342,14 @@ def run_blender_directly(goal: str):
     else:
         blender_session = blender_session or computer_use.ControlSession(None)
         session = blender_session
+    session.confirm = ask_control_question   # "delete everything" asks first (blender_edit.py)
     steps = blender_commands.steps_for(goal, session, bridge)
     if not steps:
         return None
+    if isinstance(steps, blender_build.BuildSteps):
+        # A whole building takes seconds to minutes in stages: run like any control task (progress shown, stoppable,
+        # one at a time) — but through the bridge only, so no mouse, no permission question, no window stepping in.
+        return start_computer_task(goal, scripted=steps, persistent=session_active(), blender=True, bridge_only=True)
     if not _make_room_for_new_task():   # a running task may be sending Blender code too: one at a time
         return "Still working on that — one moment."
     results = []
@@ -4223,7 +4368,12 @@ def handle_blender_command(text: str):
     if not is_blender_goal(goal, said=text):
         return None
     # The chat AI can't touch Blender and would only claim it did: this never reaches it.
-    return run_blender_directly(goal) or start_computer_task(goal, persistent=True, blender=True)
+    reply = run_blender_directly(goal)
+    if reply:
+        return reply
+    if blender_commands.is_scene_question(goal):   # a question is no reason to take over the mouse
+        return "I can't reach Blender's scene right now: it needs to be open with my bridge running."
+    return start_computer_task(goal, persistent=True, blender=True)
 
 
 def _install_blender_bridge() -> None:
@@ -6008,6 +6158,12 @@ _CLAIMS_ACTION = re.compile(
     r"(?:^|[.!] )(?:scaling|resizing|creating|adding|moving|rotating|colou?ring|deleting) (?:the|a|an|it|your)\b)", re.I)
 
 
+def _written_tool_call(content: str) -> bool:
+    """Whether a text answer is really a tool call written out ("show_distance Rome, Frankfurt.", "get_weather(...)")."""
+    first = re.match(r"\s*`*([a-z_]+)\b", content or "")
+    return bool(first) and first.group(1) in {t["function"]["name"] for t in TOOLS}
+
+
 def ask_jarvis(messages, user_text=""):
     tools, tool_choice = select_tools(user_text)
     try:
@@ -6047,6 +6203,19 @@ def ask_jarvis(messages, user_text=""):
             print("The AI answered in text instead of acting on a request that needed a tool; replaced.", flush=True)
             return ("I didn't do anything on your computer for that. Say it as a command, like “play Jane on Spotify” "
                     "or “use my computer to open Downloads”.")
+        if _written_tool_call(content):
+            # A small local model, given no tools this turn, wrote one out instead ("show_distance Rome, Frankfurt."):
+            # never show that. Ask once more for a plain answer.
+            print("The AI wrote a tool call as its answer; asking again for a plain one.", flush=True)
+            try:
+                again = groq_chat(model=GROQ_MODEL, messages=trim_for_ai(messages) + [{"role": "system", "content":
+                                  "Answer the user's last message directly, in plain words. Don't name any tool."}])
+                content = (again.choices[0].message.content or "").strip()
+            except Exception as e:
+                log_ai_error(e)
+                content = ""
+            if not content or _written_tool_call(content):
+                return "Sorry, I couldn't work that one out. Could you ask it another way?"
         return content if content else "I'm listening. How can I help?"
 
     messages.append({
@@ -6060,6 +6229,7 @@ def ask_jarvis(messages, user_text=""):
 
     for tc in tool_calls:
         name = tc.function.name
+        print(f"AI tool call: {name}", flush=True)   # the name only: arguments can be private
         try:
             args = json.loads(tc.function.arguments) if tc.function.arguments else {}
         except json.JSONDecodeError:
@@ -6606,6 +6776,7 @@ def main_loop():
             send_status("sleeping")
             continue
 
+        messages[0] = {"role": "system", "content": SYSTEM_PROMPT + now_for_the_ai()}
         messages.append({"role": "user", "content": text})
         image_note = images.context_note()
         if image_note:

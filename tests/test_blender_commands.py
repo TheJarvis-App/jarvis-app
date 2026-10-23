@@ -57,9 +57,18 @@ def test_save_phrasings_are_recognized(text):
     assert bc.steps_for(text, new_session(), FakeBridge()) is not None
 
 
-@pytest.mark.parametrize("text", ["build a simple house", "what's the weather", "it's sticky", "hello there"])
+@pytest.mark.parametrize("text", ["build a simple rocket", "what's the weather", "it's sticky", "hello there"])
 def test_unrelated_text_is_not_recognized(text):
     assert bc.steps_for(text, new_session(), FakeBridge()) is None
+
+
+@pytest.mark.parametrize("text", ["build a simple house", "create a villa", "make me a modern villa with a pool"])
+def test_a_whole_building_is_planned_as_a_staged_build_not_left_to_the_ai(text):
+    import blender_build
+    steps = bc.steps_for(text, new_session(), FakeBridge())
+    assert isinstance(steps, blender_build.BuildSteps)
+    assert [d for d, _ in steps][0] == "Planning the building"
+    assert bc.is_command(text)
 
 
 # ---------- create: executes, verifies, and tracks the object ----------
@@ -306,3 +315,89 @@ def test_vague_or_incomplete_text_is_not_concrete(text):
                                   "change its color to red", "go back to Blender", "switch to Blender"])
 def test_concrete_instructions_are_recognized_as_concrete(text):
     assert bc.looks_concrete(text)
+
+
+# ---------- commands built on blender_scene.py ----------
+
+@pytest.mark.parametrize("text", [
+    "what's in the scene", "describe the scene", "list the objects", "check the scene",
+    "is anything wrong with the scene",
+    "move the cube up 3 meters", "move it 50 cm to the left", "raise it by 2 m", "lower the ball",
+    "make the cube 4 meters wide", "make it 30 cm tall", "set the height of the cube to 2 m",
+    "make the cube shiny metal", "make it glass", "make the cube glow blue", "turn it into frosted glass",
+    "give it a matte plastic finish", "make it gold metal", "bevel the cube", "round the edges of the cube",
+    "add a bevel to it by 2 cm", "subdivide it", "add a subdivision surface to the cube", "shade it smooth",
+    "make it smooth", "shade the sphere flat", "add a sun light", "add a light", "add a spotlight", "add a camera",
+    "point the camera at the cube", "frame everything", "make the camera show everything", "render the scene",
+    "render a preview", "rename the cube to Crate", "call it Box", "put the ball on the floor", "drop it",
+    "put the sphere on the cube", "make 3 copies of the cube in a row", "duplicate it four times",
+    "remove the bevel from the cube", "make the light brighter", "make the sun dimmer", "add a floor",
+    "put a ground plane under everything", "hide the cube", "make it invisible", "show it again", "unhide all",
+    "show everything", "make it light blue", "paint the cube navy", "make it dark green glass"])
+def test_scene_kit_phrasings_are_recognized(text):
+    assert bc.steps_for(text, new_session(), FakeBridge()) is not None
+
+
+@pytest.mark.parametrize("text", ["what do you see", "rename the file to notes", "call mom", "name my playlist chill",
+                                  "lower the volume", "put the kettle on", "drop me a line", "call it a day",
+                                  "call it quits", "show me that", "hide the window", "show me the weather"])
+def test_everyday_speech_with_blender_open_is_not_taken_for_a_blender_command(text):
+    assert not bc.is_command(text)
+
+
+def test_removing_a_bevel_never_deletes_the_object():
+    bridge = FakeBridge()
+    steps = bc.steps_for("delete the bevel from the cube", new_session(), bridge)
+    assert steps and "bevel" in steps[0][0].lower() and not steps[0][0].startswith("Deleting")
+    assert bc.steps_for("delete the top of the cube", new_session(), FakeBridge()) is None
+
+
+def test_a_color_with_glow_is_a_glowing_material_not_just_a_color():
+    ref, values, said = bc._parse_material("make the cube glow blue")
+    assert ref == "the cube" and values["emission"] == bc._COLORS["blue"] and values["emission_strength"] > 0
+    assert said == "glowing blue"
+    assert bc._parse_material("make it red") is None   # a plain color stays with the color command
+
+
+def test_finishes_override_the_kinds_defaults_and_metal_colors_are_metal():
+    _, values, _ = bc._parse_material("make it shiny metal")
+    assert values["metallic"] == 1.0 and values["roughness"] == 0.1
+    _, values, _ = bc._parse_material("make it gold metal")
+    assert values["color"] == bc._METAL_COLORS["gold"]
+
+
+@pytest.mark.parametrize("number,unit,metres", [("3", "meters", 3.0), ("50", "cm", 0.5), ("two", "feet", 0.6096),
+                                                ("half a", "meter", 0.5), ("12", "inches", 0.3048)])
+def test_spoken_amounts_become_metres(number, unit, metres):
+    assert bc._units(number, unit) == pytest.approx(metres)
+
+
+def test_a_comma_separates_steps_but_not_coordinates():
+    steps = bc.steps_for("create a sphere, make it red and move it up", new_session(), FakeBridge())
+    assert [d.split()[0] for d, _ in steps] == ["Creating", "Coloring", "Moving"]
+
+
+def test_a_kit_command_sends_the_helpers_and_keeps_an_exact_undo():
+    import json as _json
+    snap = {"name": "Cube", "matrix": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], "slots": [],
+            "rotation_mode": "XYZ", "materials": {}, "modifiers": []}
+    bridge = FakeBridge(responses=[{"ok": True, "output": "1"},
+                                   {"ok": True, "output": _json.dumps({"snap": snap, "ok": True, "detail": "",
+                                                                       "name": "Cube"})}])
+    session = new_session()
+    session.remember_blender_object("Cube", "cube")
+    result = bc.steps_for("bevel the cube", session, bridge)[0][1]()
+    assert result == "Done — Cube has rounded edges now."
+    assert "JARVIS_KIT" in bridge.calls[-1] and "bevel(o, None)" in bridge.calls[-1]
+    assert "restore(" in session.last_undo["code"]
+
+
+def test_a_kit_command_whose_check_fails_is_reported_not_claimed():
+    import json as _json
+    failed = {"snap": {}, "ok": False, "detail": "its edges still render sharp", "name": "Cube"}
+    bridge = FakeBridge(responses=[{"ok": True, "output": "1"}, {"ok": True, "output": _json.dumps(failed)}])
+    session = new_session()
+    session.remember_blender_object("Cube", "cube")
+    with pytest.raises(RuntimeError, match="still render sharp"):
+        bc.steps_for("bevel the cube", session, bridge)[0][1]()
+    assert session.last_undo is None

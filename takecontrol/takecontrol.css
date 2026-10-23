@@ -1,0 +1,189 @@
+/* Take Control in the window (takecontrol/takecontrol.js): one plate in place of the orb, in the new look's tokens
+   (style.next.css) with fallbacks for the classic look. The state colour lives on the deck as --tc, so the status chip,
+   the progress line and the live step all agree. */
+.tc-deck {
+  --tc: 79 216 255;
+  --tc-plate: var(--plate, rgb(10 15 28 / .72));
+  --tc-well: var(--well, rgb(255 255 255 / .05));
+  --tc-well-2: var(--well-2, rgb(255 255 255 / .09));
+  --tc-line: var(--line, rgb(255 255 255 / .08));
+  --tc-line-2: var(--line-2, rgb(255 255 255 / .15));
+  --tc-faint: var(--faint, #8290ab);
+  --tc-r: var(--r-l, 18px);
+  grid-column: 1 / -1; grid-row: 1 / 3; align-self: stretch; justify-self: stretch;
+  width: 100%; max-width: 980px; min-height: 0; margin: 0 auto 4px;
+  display: flex; flex-direction: column; gap: 12px; overflow: hidden;
+  padding: 18px 20px 16px;
+  text-align: left;
+  background: linear-gradient(180deg, rgb(var(--tc) / .07), transparent 140px), var(--tc-plate);
+  border-radius: var(--tc-r);
+  box-shadow: inset 0 0 0 1px var(--tc-line), 0 24px 48px -32px rgb(0 0 0 / .9);
+  animation: tc-arrive .45s cubic-bezier(.16, 1, .3, 1);
+  transition: background .4s ease;
+}
+.tc-deck[hidden] { display: none !important; }
+.tc-deck > * { flex: none; }   /* only the steps and the picture give up height when the window is short */
+.tc-deck [hidden] { display: none !important; }   /* the display rules below must not beat the hidden attribute */
+:is(.tc-deck, .tc-status)[data-tone="run"] { --tc: 79 216 255; }
+:is(.tc-deck, .tc-status)[data-tone="plan"] { --tc: 165 139 255; }
+:is(.tc-deck, .tc-status)[data-tone="ask"] { --tc: 255 176 72; }
+:is(.tc-deck, .tc-status)[data-tone="pause"] { --tc: 150 190 255; }
+:is(.tc-deck, .tc-status)[data-tone="warn"] { --tc: 255 209 102; }
+:is(.tc-deck, .tc-status)[data-tone="ok"] { --tc: 61 242 192; }
+:is(.tc-deck, .tc-status)[data-tone="bad"] { --tc: 255 107 129; }
+:is(.tc-deck, .tc-status)[data-tone="idle"] { --tc: 143 160 190; }
+@keyframes tc-arrive { from { opacity: 0; transform: translateY(10px); } }
+
+/* While the deck is up, it is the stage: the orb, the big word and the caption step back (the command bar stays). */
+.app.tc-on .orb-wrap, .app.tc-on .stage-copy, .app.tc-on .caption { display: none; }
+.app.tc-on .stage { justify-content: flex-start; }
+
+/* ---------- head: what this is, its state, step and time ---------- */
+.tc-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.tc-kicker { display: inline-flex; align-items: center; gap: 7px; font: 600 12.5px/1 var(--sans); color: var(--muted); white-space: nowrap; }
+.tc-kicker svg { width: 15px; height: 15px; color: rgb(var(--tc)); }
+.tc-status {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px 5px 9px; border-radius: 999px;
+  font: 600 12px/1 var(--sans); color: rgb(var(--tc)); white-space: nowrap;
+  background: rgb(var(--tc) / .12); box-shadow: inset 0 0 0 1px rgb(var(--tc) / .35);
+  transition: color .3s, background .3s, box-shadow .3s;
+}
+.tc-status i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.tc-status:is([data-tone="run"], [data-tone="plan"], [data-tone="warn"]) i { animation: tc-pulse 1.4s ease-in-out infinite; }
+@keyframes tc-pulse { 50% { opacity: .3; } }
+.tc-meta { margin-left: auto; font: 400 12px/1 var(--sans); color: var(--tc-faint); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tc-close { margin-left: auto; }
+.tc-meta:not(:empty) + .tc-close { margin-left: 0; }
+
+.tc-goal {
+  margin: 0; font: 400 clamp(19px, 1.7vw, 25px)/1.25 var(--display, var(--sans)); letter-spacing: -.015em; color: var(--text);
+  overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tc-goal.is-placeholder { color: var(--muted); }
+.tc-progress { height: 3px; border-radius: 3px; background: var(--tc-line); overflow: hidden; margin-top: -2px; }
+.tc-progress i { display: block; height: 100%; width: 0; border-radius: 3px; background: rgb(var(--tc)); box-shadow: 0 0 10px rgb(var(--tc) / .6); transition: width .5s cubic-bezier(.16, 1, .3, 1), background .3s; }
+.tc-now { margin: -2px 0 0; font: 400 14px/1.45 var(--sans); color: var(--muted); }
+
+/* ---------- a question waiting for the user's OK ---------- */
+.tc-ask {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 10px 10px 14px; border-radius: var(--r-m, 14px);
+  background: rgb(255 176 72 / .1); box-shadow: inset 0 0 0 1px rgb(255 176 72 / .45);
+}
+.tc-ask svg { flex: none; width: 18px; height: 18px; color: rgb(255 176 72); }
+.tc-ask p { flex: 1 1 200px; margin: 0; font: 500 14px/1.4 var(--sans); color: var(--text); }
+
+/* ---------- the result of the task ---------- */
+.tc-result {
+  --rt: 143 160 190;
+  flex: none; display: flex; align-items: flex-start; gap: 11px; padding: 12px 14px; border-radius: var(--r-m, 14px);
+  background: rgb(var(--rt) / .09); box-shadow: inset 0 0 0 1px rgb(var(--rt) / .3);
+}
+.tc-result[data-tone="ok"] { --rt: 61 242 192; }
+.tc-result[data-tone="bad"] { --rt: 255 107 129; }
+.tc-result-ic { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: rgb(var(--rt)); background: rgb(var(--rt) / .16); }
+.tc-result-ic svg { width: 13px; height: 13px; }
+.tc-result p { max-height: 6em; overflow-y: auto; margin: 0; font: 400 14px/1.5 var(--sans); color: var(--text); overflow-wrap: anywhere; }
+.tc-result > div { min-width: 0; }
+.tc-check { display: inline-block; margin-top: 6px; padding: 3px 9px; border-radius: 999px; font: 500 11.5px/1.3 var(--sans); color: var(--muted); background: var(--tc-well-2); }
+.tc-check[data-ok="true"] { color: rgb(61 242 192); background: rgb(61 242 192 / .12); }
+
+/* ---------- body: the steps beside a picture of the screen ---------- */
+.tc-deck > .tc-body { flex: 1 1 auto; }
+.tc-body { min-height: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 14px; }
+.tc-log { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 6px; }
+.tc-log-head { display: flex; align-items: baseline; justify-content: space-between; }
+.tc-log h3, .tc-plan summary { margin: 0; font: 600 12px/1.2 var(--sans); color: var(--tc-faint); letter-spacing: .01em; }
+.tc-link { padding: 2px 4px; border: 0; background: none; font: 500 12px/1.2 var(--sans); color: var(--muted); cursor: pointer; border-radius: 6px; }
+.tc-link:hover { color: var(--text); }
+.tc-plan { padding: 8px 12px 9px; border-radius: 12px; background: var(--tc-well); }
+.tc-plan summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
+.tc-plan summary::-webkit-details-marker { display: none; }
+.tc-plan summary::before { content: ""; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform .2s; }
+.tc-plan[open] summary::before { transform: rotate(45deg); }
+.tc-plan ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 2px; font: 400 13px/1.45 var(--sans); color: var(--muted); }
+.tc-plan li::marker { color: var(--tc-faint); font-variant-numeric: tabular-nums; }
+
+.tc-steps:empty { display: none; }
+.tc-steps, .tc-result p { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / .16) transparent; }
+.tc-steps { flex: 1 1 auto; min-height: 0; margin: 0; padding: 0 4px 0 0; list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.tc-step { display: grid; grid-template-columns: 20px 22px minmax(0, 1fr); align-items: start; gap: 6px; padding: 6px 8px 6px 4px; border-radius: 10px; animation: tc-step-in .3s ease; }
+.tc-step:hover { background: var(--tc-well); }
+@keyframes tc-step-in { from { opacity: 0; transform: translateY(4px); } }
+.tc-step-n { grid-column: 1; padding-top: 3px; text-align: right; font: 400 11.5px/1.2 var(--sans); color: var(--tc-faint); font-variant-numeric: tabular-nums; }
+.tc-step-ic { grid-column: 2; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; color: rgb(var(--st)); background: rgb(var(--st) / .14); }
+.tc-step-ic svg { width: 12px; height: 12px; }
+.tc-step-body { grid-column: 3; min-width: 0; padding-top: 1px; }
+.tc-step b { display: block; font: 500 13.5px/1.4 var(--sans); color: var(--text); overflow-wrap: anywhere; }
+.tc-step small { display: none; margin-top: 2px; font: 400 12px/1.4 var(--sans); color: var(--tc-faint); overflow-wrap: anywhere; }
+.tc-steps.show-notes small, .tc-step:is([data-status="failed"], [data-status="nochange"], [data-status="declined"], [data-status="checked"]) small { display: block; }
+.tc-step { --st: 143 160 190; }
+.tc-step[data-status="ok"] { --st: 61 242 192; }
+.tc-step[data-status="failed"] { --st: 255 107 129; }
+.tc-step[data-status="nochange"] { --st: 255 209 102; }
+.tc-step[data-status="live"] { --st: var(--tc); }
+.tc-step[data-status="live"] b { color: rgb(var(--tc)); }
+.tc-spin { width: 10px; height: 10px; border-radius: 50%; border: 1.6px solid rgb(var(--tc) / .3); border-top-color: rgb(var(--tc)); animation: tc-spin .8s linear infinite; }
+@keyframes tc-spin { to { transform: rotate(360deg); } }
+.tc-empty { padding: 4px 4px 10px; font: 400 13px/1.45 var(--sans); color: var(--tc-faint); }
+.tc-empty p { margin: 0 0 10px; }
+.tc-examples { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.tc-example { padding: 7px 12px; border: 0; border-radius: 10px; cursor: pointer; text-align: left; font: 400 13px/1.35 var(--sans); color: var(--muted); background: var(--tc-well); box-shadow: inset 0 0 0 1px var(--tc-line); transition: background .2s, color .2s; }
+.tc-example::before { content: "“"; } .tc-example::after { content: "”"; }
+.tc-example:hover { background: var(--tc-well-2); color: var(--text); }
+.tc-example:focus-visible { outline: 2px solid rgb(var(--accent-rgb, 79 216 255)); outline-offset: 2px; }
+
+.tc-screen { margin: 0; min-height: 0; display: flex; flex-direction: column; gap: 7px; }
+.tc-shot {
+  position: relative; flex: 0 1 auto; min-height: 0; max-height: 360px; aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden;
+  background: #060a14; box-shadow: inset 0 0 0 1px var(--tc-line); display: grid; place-items: center;
+}
+.tc-shot img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.tc-shot video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.tc-live-tag { position: absolute; left: 10px; top: 10px; padding: 3px 7px; border-radius: 6px; background: rgb(0 0 0 / .55); font: 700 10px/1 var(--mono, ui-monospace, Consolas, monospace); letter-spacing: .12em; color: #ff8a8a; }
+.tc-live-tag::before { content: "● "; }
+/* What Jarvis is acting on right now, over the live view. */
+.tc-target { position: absolute; border: 2px solid rgb(var(--tc)); border-radius: 5px; box-shadow: 0 0 12px rgb(var(--tc) / .7); pointer-events: none; transition: left .15s ease, top .15s ease, width .15s ease, height .15s ease; }
+.tc-shot-empty { max-width: 230px; padding: 16px; text-align: center; font: 400 12.5px/1.45 var(--sans); color: var(--tc-faint); }
+.tc-screen figcaption { display: flex; align-items: center; gap: 8px; min-width: 0; font: 400 12px/1.3 var(--sans); color: var(--tc-faint); }
+.tc-app { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.tc-app::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: rgb(var(--tc)); vertical-align: 1px; }
+.tc-age { margin-left: auto; flex: none; }
+
+/* ---------- foot: a new task, and the controls ---------- */
+.tc-foot { flex: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--tc-line); }
+.tc-task { flex: 1 1 300px; display: flex; gap: 6px; min-width: 0; padding: 4px 4px 4px 12px; border-radius: 14px; background: var(--tc-well); box-shadow: inset 0 0 0 1px var(--tc-line-2); transition: box-shadow .2s, background .2s; }
+.tc-task:focus-within { background: var(--tc-well-2); box-shadow: inset 0 0 0 1.5px rgb(var(--accent-rgb, 79 216 255) / .75), 0 0 0 4px rgb(var(--accent-rgb, 79 216 255) / .12); }
+.tc-task input { flex: 1 1 auto; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font: 400 14px/1.3 var(--sans); }
+.tc-task input::placeholder { color: var(--tc-faint); }
+.tc-controls { display: flex; gap: 6px; flex-wrap: wrap; }
+.tc-btn {
+  padding: 9px 14px; border: 0; border-radius: 11px; cursor: pointer; white-space: nowrap;
+  font: 600 13px/1.1 var(--sans); color: var(--text); background: var(--tc-well-2); box-shadow: inset 0 0 0 1px var(--tc-line);
+  transition: background .2s, box-shadow .2s, transform .12s, opacity .2s;
+}
+.tc-btn:hover { background: rgb(255 255 255 / .14); }
+.tc-btn:active { transform: scale(.97); }
+.tc-btn:focus-visible { outline: 2px solid rgb(var(--accent-rgb, 79 216 255)); outline-offset: 2px; }
+.tc-btn:disabled { opacity: .45; cursor: not-allowed; }
+.tc-btn.primary { background: rgb(var(--accent-rgb, 79 216 255)); color: var(--ink, #04121c); box-shadow: none; }
+.tc-btn.primary:hover { background: rgb(var(--accent-rgb, 79 216 255) / .84); }
+.tc-ask .tc-btn.primary { background: rgb(255 176 72); }
+.tc-btn.danger { color: #ffb3bf; background: rgb(255 107 129 / .13); box-shadow: inset 0 0 0 1px rgb(255 107 129 / .42); }
+.tc-btn.danger:hover { background: rgb(255 107 129 / .24); }
+
+/* ---------- smaller windows: the picture goes under the steps, then away ---------- */
+@media (max-width: 1280px) {
+  .tc-body { grid-template-columns: minmax(0, 1fr) 176px; }
+  .tc-shot { flex: none; width: 100%; }
+  .tc-screen figcaption { flex-direction: column; align-items: flex-start; gap: 3px; }
+  .tc-app { max-width: 100%; }
+  .tc-age { margin-left: 13px; }
+  .tc-shot-empty { padding: 8px; font-size: 11.5px; }
+}
+@media (max-height: 640px) {
+  .tc-screen { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tc-deck, .tc-step { animation: none; }
+  .tc-status i, .tc-spin { animation: none; }
+}

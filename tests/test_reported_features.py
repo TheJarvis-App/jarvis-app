@@ -386,3 +386,28 @@ def test_a_rejected_openai_key_is_not_tried_again(monkeypatch):
     images.generate("a dog")
     images.generate("a cat")
     assert calls == ["openai"]
+
+
+# ---------------------------------------------------------------- a tool call written out as the answer
+def _answers(*texts):
+    replies = list(texts)
+    return lambda **kw: types.SimpleNamespace(choices=[types.SimpleNamespace(message=types.SimpleNamespace(
+        content=replies.pop(0), tool_calls=None))])
+
+
+def test_a_tool_call_written_as_text_is_never_shown_the_ai_is_asked_again(monkeypatch):
+    monkeypatch.setattr(app, "groq_chat", _answers("show_distance Rome, Frankfurt.", "Rain is likely in Rome, so yes."))
+    messages = [{"role": "system", "content": "x"}, {"role": "user", "content": "should I pack an umbrella for Rome?"}]
+    assert app.ask_jarvis(messages, "should I pack an umbrella for Rome?") == "Rain is likely in Rome, so yes."
+
+
+def test_a_second_written_tool_call_gets_an_honest_fallback(monkeypatch):
+    monkeypatch.setattr(app, "groq_chat", _answers("show_distance Rome", "get_weather(city='Rome')"))
+    messages = [{"role": "system", "content": "x"}, {"role": "user", "content": "umbrella?"}]
+    assert app.ask_jarvis(messages, "umbrella?") == "Sorry, I couldn't work that one out. Could you ask it another way?"
+
+
+def test_an_ordinary_answer_mentioning_a_word_like_a_tool_is_kept(monkeypatch):
+    monkeypatch.setattr(app, "groq_chat", _answers("Weather in Rome is usually mild in spring."))
+    messages = [{"role": "system", "content": "x"}, {"role": "user", "content": "rome?"}]
+    assert app.ask_jarvis(messages, "rome?") == "Weather in Rome is usually mild in spring."

@@ -42,6 +42,7 @@
       "weather/**",
       "clock/**",
       "coding/**",
+      "takecontrol/**",
       "index.html",
       "style.css",
       "style.next.css",

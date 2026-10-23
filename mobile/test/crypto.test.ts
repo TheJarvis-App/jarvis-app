@@ -6,9 +6,9 @@ import { execFileSync } from "node:child_process";
 import { decrypt, encrypt, keyFromB64 } from "../src/core/crypto.ts";
 import { b64ToBytes, bytesToB64, bytesToB64url } from "../src/core/b64.ts";
 
-const ROOT = new URL("../..", import.meta.url).pathname;
-const PY = process.env.JARVIS_PY || ROOT + "venv/bin/python";
-const py = (code: string, input = "") => execFileSync(PY, ["-c", code], { cwd: ROOT, input }).toString().trim();
+import { PY, ROOT } from "./support/python.ts";
+// UTF-8 output: the message has Hebrew and an emoji, and a Windows pipe would otherwise use the local code page.
+const py = (code: string, input = "") => execFileSync(PY, ["-c", code], { cwd: ROOT, input, env: { ...process.env, PYTHONIOENCODING: "utf-8" } }).toString().trim();
 
 test("base64 round-trips every length and matches the standard encoding", () => {
   for (let n = 0; n < 70; n++) {

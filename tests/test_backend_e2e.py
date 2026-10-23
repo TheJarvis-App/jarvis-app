@@ -20,6 +20,14 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _own_folders(folder) -> dict:
+    """The engine installs its Blender bridge into Blender's startup folder (under APPDATA, or ~/Library on a Mac)
+    and talks to Blender through a folder in TEMP: point both at the test's own folder, so a test engine never
+    rewrites the user's Blender setup or reaches a Blender they have open."""
+    folder = str(folder)
+    return {"APPDATA": folder, "HOME": folder, "TEMP": folder, "TMP": folder}
+
+
 @pytest.fixture(scope="module")
 def backend(tmp_path_factory):
     port = _free_port()
@@ -27,7 +35,7 @@ def backend(tmp_path_factory):
     env = {**os.environ, "JARVIS_SUPERVISED": "1", "JARVIS_WS_PORT": str(port), "JARVIS_WS_TOKEN": TOKEN,
            "JARVIS_DATA_DIR": str(data), "JARVIS_AUDIO": "off", "JARVIS_NO_AI_SETUP": "1", "GROQ_API_KEY": "",
            # a closed port: without it the engine asks the developer's own Ollama, if one is running
-           "OLLAMA_URL": "http://127.0.0.1:9", "PYTHONUNBUFFERED": "1"}
+           "OLLAMA_URL": "http://127.0.0.1:9", "PYTHONUNBUFFERED": "1", **_own_folders(data)}
     env.pop("JARVIS_ALLOW_ORIGINS", None)
     process = subprocess.Popen([sys.executable, os.path.join(ROOT, "app.py")], cwd=ROOT, env=env,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -118,7 +126,7 @@ def test_the_engine_stops_when_its_window_is_gone(tmp_path):
     port = _free_port()
     env = {**os.environ, "JARVIS_SUPERVISED": "1", "JARVIS_WS_PORT": str(port), "JARVIS_WS_TOKEN": TOKEN,
            "JARVIS_DATA_DIR": str(tmp_path), "JARVIS_AUDIO": "off", "JARVIS_NO_AI_SETUP": "1", "GROQ_API_KEY": "",
-           "JARVIS_PARENT_PID": str(window.pid)}
+           "JARVIS_PARENT_PID": str(window.pid), **_own_folders(tmp_path)}
     engine = subprocess.Popen([sys.executable, os.path.join(ROOT, "app.py")], cwd=ROOT, env=env,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -144,7 +152,7 @@ def test_a_genuinely_new_install_is_offered_the_welcome_screen(tmp_path):
     port = _free_port()
     env = {**os.environ, "JARVIS_SUPERVISED": "1", "JARVIS_WS_PORT": str(port), "JARVIS_WS_TOKEN": TOKEN,
            "JARVIS_DATA_DIR": str(tmp_path), "JARVIS_AUDIO": "off", "JARVIS_NO_AI_SETUP": "1", "GROQ_API_KEY": "",
-           "PYTHONUNBUFFERED": "1"}
+           "PYTHONUNBUFFERED": "1", **_own_folders(tmp_path)}
     env.pop("JARVIS_ALLOW_ORIGINS", None)
     process = subprocess.Popen([sys.executable, os.path.join(ROOT, "app.py")], cwd=ROOT, env=env,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

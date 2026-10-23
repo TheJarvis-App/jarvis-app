@@ -2,6 +2,7 @@
 happened, follow-ups reach the same project, and the AI's write_code tool gets the real result back. The AI itself
 is a stand-in here, and so are the apps (the sandbox records "open VS Code" instead of doing it)."""
 import os
+import re
 import time
 
 import pytest
@@ -51,7 +52,8 @@ def test_a_spoken_request_writes_the_project_and_opens_it(tmp_path):
     assert (folder / "calc.py").read_text() == "def add(a, b):\n    return a + b\n" and (folder / "tests" / "test_calc.py").exists()
     assert reply.startswith("I wrote calc: 2 files. 2 syntax checks passed. I haven't run it or its tests")
     assert reply.endswith(f"It's open in Visual Studio Code. The project folder is {folder}.")
-    assert any("Visual Studio Code" in action or "bin/code" in action for action in sandbox.actions)   # VS Code was asked to open it
+    # VS Code was asked to open it (a Windows or a Mac path to its "code" command)
+    assert any(re.search(r"Visual Studio Code|bin[\\/]code", action, re.I) for action in sandbox.actions)
 
 
 def test_without_a_destination_jarvis_just_builds_it_and_says_where(tmp_path):

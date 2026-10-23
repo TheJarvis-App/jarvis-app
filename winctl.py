@@ -95,19 +95,127 @@ class _INPUT(ctypes.Structure):
     _fields_ = [("type", wintypes.DWORD), ("u", _U)]
 
 
+TYPE_CHUNK, TYPE_PAUSE = 1, 0.015
+
+
 def type_text(text: str, strict: bool = False) -> None:
     """Type text into the focused window, any language (sends Unicode characters, not key codes)."""
     _need_windows()
-    events = []
-    for ch in text:
-        units = ch.encode("utf-16-le")
-        for i in range(0, len(units), 2):
-            unit = units[i] | (units[i + 1] << 8)
-            for flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP):
-                events.append(_INPUT(type=1, ki=_KEYBDINPUT(0, unit, flags, 0, 0)))
-    if events:
-        _send(events, strict)
+    # One character at a time with a breath in between: Windows 11's Notepad drops or repeats characters when they
+    # come faster (measured 2026-10-22: a whole string in one batch came out as "jumps vver םםםם...", and so did
+    # 2 every 12 ms once Hebrew was in the text; 1 every 15 ms arrived intact, ~60 a second; a classic text box
+    # takes any pace).
+    for start in range(0, len(text), TYPE_CHUNK):
+        events = []
+        for ch in text[start:start + TYPE_CHUNK]:
+            units = ch.encode("utf-16-le")
+            for i in range(0, len(units), 2):
+                unit = units[i] | (units[i + 1] << 8)
+                for flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP):
+                    events.append(_INPUT(type=1, ki=_KEYBDINPUT(0, unit, flags, 0, 0)))
+        if events:
+            _send(events, strict)
+        time.sleep(TYPE_PAUSE)
     time.sleep(0.05)
+
+
+CF_UNICODETEXT, GMEM_MOVEABLE = 13, 0x0002
+_clip_dlls = None
+
+
+def _clipboard_api():
+    global _clip_dlls
+    if _clip_dlls is None:
+        user32, kernel32 = ctypes.WinDLL("user32", use_last_error=True), ctypes.WinDLL("kernel32", use_last_error=True)
+        user32.OpenClipboard.argtypes, user32.OpenClipboard.restype = [wintypes.HWND], wintypes.BOOL
+        user32.GetClipboardData.argtypes, user32.GetClipboardData.restype = [wintypes.UINT], wintypes.HANDLE
+        user32.SetClipboardData.argtypes, user32.SetClipboardData.restype = [wintypes.UINT, wintypes.HANDLE], \
+            wintypes.HANDLE
+        user32.EnumClipboardFormats.argtypes, user32.EnumClipboardFormats.restype = [wintypes.UINT], wintypes.UINT
+        user32.RegisterClipboardFormatW.argtypes, user32.RegisterClipboardFormatW.restype = [wintypes.LPCWSTR], \
+            wintypes.UINT
+        kernel32.GlobalAlloc.argtypes, kernel32.GlobalAlloc.restype = [wintypes.UINT, ctypes.c_size_t], wintypes.HANDLE
+        kernel32.GlobalLock.argtypes, kernel32.GlobalLock.restype = [wintypes.HANDLE], ctypes.c_void_p
+        kernel32.GlobalUnlock.argtypes = [wintypes.HANDLE]
+        user32.CreateWindowExW.restype = wintypes.HWND
+        user32.CreateWindowExW.argtypes = ([wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD] +
+                                           [ctypes.c_int] * 4 +
+                                           [wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID])
+        _clip_dlls = (user32, kernel32)
+    return _clip_dlls
+
+
+_clip_owner = None
+
+
+def _open_clipboard(user32) -> bool:
+    # The clipboard needs an owner window: opened with none, Windows quietly refuses what is put on it. A hidden
+    # message-only window ("STATIC", parent HWND_MESSAGE) is enough.
+    global _clip_owner
+    if not _clip_owner:
+        _clip_owner = user32.CreateWindowExW(0, "STATIC", "Jarvis clipboard", 0, 0, 0, 0, 0, wintypes.HWND(-3),
+                                             None, None, None)
+    for _ in range(15):   # another app may hold it for a moment
+        if user32.OpenClipboard(_clip_owner):
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def _put_clipboard_text(user32, kernel32, text: str) -> None:
+    """Replace what's on the (open) clipboard with this text, kept out of clipboard history and cloud sync."""
+    user32.EmptyClipboard()
+    for fmt, data in ((CF_UNICODETEXT, (text + "\0").encode("utf-16-le")),
+                      (user32.RegisterClipboardFormatW("ExcludeClipboardContentFromMonitorProcessing"), b"\0\0\0\0"),
+                      (user32.RegisterClipboardFormatW("CanIncludeInClipboardHistory"), b"\0\0\0\0"),
+                      (user32.RegisterClipboardFormatW("CanUploadToCloudClipboard"), b"\0\0\0\0")):
+        handle = kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
+        pointer = kernel32.GlobalLock(handle)
+        ctypes.memmove(pointer, data, len(data))
+        kernel32.GlobalUnlock(handle)
+        user32.SetClipboardData(fmt, handle)
+
+
+def paste_text(text: str) -> bool:
+    """Put text into the focused field in one go, through the clipboard and Ctrl+V: exact and instant in every app,
+    where key-by-key typing gets garbled by slow ones. The user's clipboard text is put back afterwards. False (and
+    nothing done) when the clipboard holds something other than text (a picture, files), which must not be lost."""
+    _need_windows()
+    user32, kernel32 = _clipboard_api()
+    if not _open_clipboard(user32):
+        return False
+    try:
+        formats, fmt = set(), 0
+        while True:
+            fmt = user32.EnumClipboardFormats(fmt)
+            if not fmt:
+                break
+            formats.add(fmt)
+        if formats and CF_UNICODETEXT not in formats:
+            return False
+        previous = None
+        if CF_UNICODETEXT in formats:
+            handle = user32.GetClipboardData(CF_UNICODETEXT)
+            pointer = kernel32.GlobalLock(handle) if handle else None
+            if pointer:
+                previous = ctypes.wstring_at(pointer)
+                kernel32.GlobalUnlock(handle)
+        _put_clipboard_text(user32, kernel32, text)
+    finally:
+        user32.CloseClipboard()
+    press("ctrl", "v", strict=True)
+    # shortcut: the app reads the clipboard while handling Ctrl+V; a second covers even a busy one, but an app slower
+    # than that would paste the restored text. Upgrade to restoring on the next step if that's ever seen.
+    time.sleep(1.0)
+    if _open_clipboard(user32):
+        try:
+            if previous is None:
+                user32.EmptyClipboard()
+            else:
+                _put_clipboard_text(user32, kernel32, previous)
+        finally:
+            user32.CloseClipboard()
+    return True
 
 
 # ---------- mouse (computer control) ----------
@@ -141,6 +249,89 @@ def click(x: int, y: int, button: str = "left", double: bool = False) -> None:
         _mouse(down)
         _mouse(up)
         time.sleep(0.06)
+
+
+MOUSEEVENTF_MOVE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_VIRTUALDESK = 0x0001, 0x8000, 0x4000
+
+
+def _move_to(x: int, y: int) -> None:
+    # A real move event (not just SetCursorPos): drag-and-drop in Explorer and the browsers only follows those.
+    user32 = ctypes.windll.user32
+    left, top = user32.GetSystemMetrics(76), user32.GetSystemMetrics(77)
+    width, height = max(1, user32.GetSystemMetrics(78) - 1), max(1, user32.GetSystemMetrics(79) - 1)
+    dx, dy = round((x - left) * 65535 / width), round((y - top) * 65535 / height)
+    _send([_INPUT(type=0, mi=_MOUSEINPUT(dx, dy, 0, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+                                         0, 0))], strict=True)
+
+
+def drag(x1: int, y1: int, x2: int, y2: int) -> None:
+    """Press at one point, move there in small steps, let go at the other (files, sliders, selecting text)."""
+    _need_windows()
+    _move_to(x1, y1)
+    time.sleep(0.05)
+    _mouse(MOUSEEVENTF_LEFTDOWN)
+    time.sleep(0.08)
+    steps = 12
+    for i in range(1, steps + 1):
+        _move_to(x1 + (x2 - x1) * i / steps, y1 + (y2 - y1) * i / steps)
+        time.sleep(0.02)
+    time.sleep(0.08)
+    _mouse(MOUSEEVENTF_LEFTUP)
+
+
+class _BITMAPINFOHEADER(ctypes.Structure):
+    _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
+                ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+                ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
+                ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD), ("biClrImportant", wintypes.DWORD)]
+
+
+_gdi_dlls = None
+
+
+def _gdi():
+    # Own handles to the DLLs, with 64-bit handle types: the shared ctypes.windll ones get other prototypes from
+    # uiautomation, and an untyped handle overflows.
+    global _gdi_dlls
+    if _gdi_dlls is None:
+        user32, gdi32 = ctypes.WinDLL("user32"), ctypes.WinDLL("gdi32")
+        HDC, HGDI = wintypes.HDC, wintypes.HGDIOBJ
+        user32.GetDC.restype, user32.GetDC.argtypes = HDC, [wintypes.HWND]
+        user32.ReleaseDC.argtypes = [wintypes.HWND, HDC]
+        gdi32.CreateCompatibleDC.restype, gdi32.CreateCompatibleDC.argtypes = HDC, [HDC]
+        gdi32.CreateDIBSection.restype = HGDI
+        gdi32.CreateDIBSection.argtypes = [HDC, ctypes.c_void_p, wintypes.UINT, ctypes.POINTER(ctypes.c_void_p),
+                                           wintypes.HANDLE, wintypes.DWORD]
+        gdi32.SelectObject.restype, gdi32.SelectObject.argtypes = HGDI, [HDC, HGDI]
+        gdi32.SetStretchBltMode.argtypes = [HDC, ctypes.c_int]
+        gdi32.StretchBlt.argtypes = [HDC] + [ctypes.c_int] * 4 + [HDC] + [ctypes.c_int] * 4 + [wintypes.DWORD]
+        gdi32.DeleteObject.argtypes, gdi32.DeleteDC.argtypes = [HGDI], [HDC]
+        _gdi_dlls = (user32, gdi32)
+    return _gdi_dlls
+
+
+def screen_sample(width: int = 192, height: int = 80) -> bytes:
+    """The primary screen shrunk to a tiny grey picture (one byte per pixel), in a few dozen milliseconds: enough to
+    tell whether the screen is still changing, far cheaper than a real screenshot."""
+    _need_windows()
+    user32, gdi32 = _gdi()
+    screen_dc = user32.GetDC(None)
+    memory_dc = gdi32.CreateCompatibleDC(screen_dc)
+    header = _BITMAPINFOHEADER(ctypes.sizeof(_BITMAPINFOHEADER), width, -height, 1, 32, 0, 0, 0, 0, 0, 0)
+    bits = ctypes.c_void_p()
+    bitmap = gdi32.CreateDIBSection(screen_dc, ctypes.byref(header), 0, ctypes.byref(bits), None, 0)
+    try:
+        old = gdi32.SelectObject(memory_dc, bitmap)
+        gdi32.SetStretchBltMode(memory_dc, 3)   # COLORONCOLOR: point samples, so a blinking caret rarely shows
+        gdi32.StretchBlt(memory_dc, 0, 0, width, height, screen_dc, 0, 0, user32.GetSystemMetrics(0),
+                         user32.GetSystemMetrics(1), 0x00CC0020)
+        raw = ctypes.string_at(bits, width * height * 4)
+        gdi32.SelectObject(memory_dc, old)
+    finally:
+        gdi32.DeleteObject(bitmap)
+        gdi32.DeleteDC(memory_dc)
+        user32.ReleaseDC(None, screen_dc)
+    return raw[1::4]   # the green channel of each BGRX pixel is grey enough to compare
 
 
 def scroll(amount: int, x: int = None, y: int = None) -> None:
@@ -251,6 +442,8 @@ def focus(hwnd: int) -> bool:
     """Bring a window to the front. Windows blocks this for background apps unless an Alt key press comes first."""
     _need_windows()
     user32 = ctypes.windll.user32
+    if user32.GetForegroundWindow() == hwnd and not user32.IsIconic(hwnd):
+        return True   # already in front: the Alt tap below would switch on its menu keys and eat the next shortcut
     if user32.IsIconic(hwnd):
         user32.ShowWindow(hwnd, SW_RESTORE)
     _key_event(VK["alt"], False)

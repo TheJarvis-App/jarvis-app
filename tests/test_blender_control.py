@@ -84,6 +84,7 @@ def test_bridge_run_sends_a_request_and_waits_for_the_matching_response(tmp_path
             request = json.load(f)
         blender_bridge._write_json_atomic(blender_bridge.RESPONSE_FILE, blender_bridge.process_one(request, {}))
 
+    monkeypatch.setattr(blender_control, "_next_id", [0])   # ids count up across the whole test run
     bridge = blender_control.BlenderBridge()
     import threading
     import time as time_module

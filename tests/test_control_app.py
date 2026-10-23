@@ -40,6 +40,7 @@ def clean(sandboxed, monkeypatch):
     yield sent
     if app.computer_task is not None:
         app.computer_task.stop()
+    app.control_session = None   # a session left open would turn the next test file's sentences into tasks
 
 
 def test_the_goal_keeps_the_users_wording():
@@ -150,7 +151,9 @@ def test_stop_words_do_nothing_when_jarvis_is_not_in_control():
     assert app.handle_control_voice("yes") is None
 
 
-def test_a_second_task_waits_for_the_first(monkeypatch):
+def test_a_second_task_replaces_one_still_running(monkeypatch):
+    """A new command replaces a task that is still going (usually one the small local AI got stuck on) instead of
+    answering "Still working on that" for minutes; see _make_room_for_new_task."""
     monkeypatch.setenv("JARVIS_COMPUTER_CONTROL", "on")
     gate = threading.Event()
     monkeypatch.setattr(app, "_ask_ai_for_control", lambda m, t: (gate.wait(5), ai()(m, t))[1])
@@ -159,7 +162,14 @@ def test_a_second_task_waits_for_the_first(monkeypatch):
         if app.control_active():
             break
         time.sleep(0.02)
-    assert "Still working on that" in app.start_computer_task("second")
+    first = app.computer_task
+    assert "Still working on that" not in app.start_computer_task("second")
+    assert first.state == "stopped"
+    for _ in range(200):
+        if app.computer_task is not first and getattr(app.computer_task, "goal", "") == "second":
+            break
+        time.sleep(0.02)
+    assert app.computer_task.goal == "second"
     app.computer_task.stop()
     gate.set()
 
@@ -243,6 +253,23 @@ def test_blender_words_do_nothing_when_blender_is_closed(monkeypatch, clean):
     assert not app.is_blender_goal("what is a cube")
 
 
+def test_a_question_about_the_scene_goes_to_blender_only_while_it_is_open(monkeypatch, clean):
+    monkeypatch.setattr(app.blender_control, "blender_running", lambda: True)
+    assert app.is_blender_goal("what's in the scene?")
+    monkeypatch.setattr(app.blender_control, "blender_running", lambda: False)
+    assert not app.is_blender_goal("what's in the scene?")
+    assert app.is_blender_goal("what's in the scene in blender?", said="What's in the scene in Blender?")
+
+
+def test_a_scene_question_without_a_bridge_says_so_instead_of_taking_the_mouse(monkeypatch, clean):
+    monkeypatch.setattr(app.blender_control, "blender_running", lambda: True)
+    monkeypatch.setattr(app, "run_blender_directly", lambda goal: None)
+    started = []
+    monkeypatch.setattr(app, "start_computer_task", lambda *a, **k: started.append(a) or "Okay.")
+    reply = app.handle_blender_command("What's in the scene?")
+    assert "can't reach Blender's scene" in reply and not started
+
+
 @pytest.mark.parametrize("reply", ["I've selected a cube in Blender. Scaling the cube to be twice as large...",
                                    "I've scaled the cube for you."])
 def test_fake_blender_claims_are_caught(reply):
@@ -278,7 +305,8 @@ def test_a_follow_up_goal_does_not_need_take_control_again_or_reask(monkeypatch,
         time.sleep(0.02)
     sent_before = len(clean)
     reply = app.handle_direct_command("click the Search button")   # no "take control" prefix this time
-    assert reply == "Okay."   # no "Can I use your mouse..." — permission was already granted for the session
+    # no "Can I use your mouse..." — permission was already granted for the session; and not a bare "Okay" either
+    assert reply == "On it: click the Search button. Say stop to cancel."
     assert not any(p.get("type") == "control_confirm" for p in clean[sent_before:])
 
 
@@ -307,9 +335,9 @@ def test_a_one_off_step_does_not_leave_a_lingering_session(monkeypatch, clean):
     assert not app.session_active()
 
 
-def test_a_follow_up_said_while_still_busy_gets_the_busy_message(monkeypatch, clean):
-    """A free-text follow-up during an active session must still reach start_computer_task (and its "Still working
-    on that" reply) even while a task is running — not silently fall through to the general chat AI."""
+def test_a_follow_up_said_while_still_busy_replaces_the_running_task(monkeypatch, clean):
+    """A free-text follow-up during an active session must still reach start_computer_task even while a task is
+    running — not silently fall through to the general chat AI — and it replaces the running task."""
     monkeypatch.setenv("JARVIS_COMPUTER_CONTROL", "on")
     gate = threading.Event()
     monkeypatch.setattr(app, "_ask_ai_for_control", lambda m, t: (gate.wait(5), ai()(m, t))[1])
@@ -318,7 +346,9 @@ def test_a_follow_up_said_while_still_busy_gets_the_busy_message(monkeypatch, cl
         if app.control_active():
             break
         time.sleep(0.02)
-    assert "Still working on that" in app.handle_direct_command("create a chair")
+    first = app.computer_task
+    assert app.handle_direct_command("create a chair") == "On it: create a chair. Say stop to cancel."
+    assert first.state == "stopped"
     gate.set()
 
 
@@ -344,10 +374,10 @@ def test_a_blender_goal_uses_blender_computer_task(monkeypatch, clean):
 
         def run(self):
             self.state = "completed"
-            return "Built the house."
+            return "Built the rocket."
     monkeypatch.setattr(app.computer_use, "BlenderComputerTask", FakeBlenderTask)
     # A goal blender_commands.py doesn't recognize deterministically, so this exercises the free-form AI fallback.
-    app.handle_direct_command("take control of my computer and build a small house in blender")
+    app.handle_direct_command("take control of my computer and build a small rocket in blender")
     for _ in range(200):
         if "bridge" in captured:
             break
@@ -419,13 +449,17 @@ def test_a_vague_blender_remark_asks_for_clarification_without_the_ai(monkeypatc
         time.sleep(0.02)
     while not app.announcements.empty():   # drain the "created a cube" announcement before the next command
         app.announcements.get_nowait()
-    reply = app.handle_direct_command("it's sticky")
+    # A remark with no instruction in it isn't a command at all (it goes to the chat, never to the control AI)...
+    assert app.handle_direct_command("it's sticky") is None
+    # ...and a vague instruction gets a question back, also without the AI.
+    reply = app.handle_direct_command("make the cube totally")
     for _ in range(200):
         if not app.announcements.empty():
             break
         time.sleep(0.02)
     spoken = app.announcements.get(timeout=1)
-    assert "more specifically" in spoken or "more specifically" in (reply or "")
+    assert "not sure what you'd like" in spoken, (reply, spoken)
+    assert ai_calls == []
 
 
 def test_blender_context_survives_a_momentary_focus_steal(monkeypatch, clean):
@@ -479,3 +513,172 @@ def test_an_exception_while_setting_up_the_task_never_strands_the_session(monkey
     assert "That didn't work" in spoken and "OSError" in spoken
     states = [p["data"]["state"] for p in clean if p.get("type") == "control"]
     assert "listening" in states   # the overlay was told control is still active, not that it crashed
+
+
+# ---------- cancelling a task is not ending control; muting is neither ----------
+
+def _wait(condition, seconds=4):
+    for _ in range(int(seconds / 0.02)):
+        if condition():
+            return True
+        time.sleep(0.02)
+    return condition()
+
+
+def _session_with_a_running_task(monkeypatch):
+    """A "take control" session with a task that is mid-step (its AI answer held back by the returned gate)."""
+    monkeypatch.setenv("JARVIS_COMPUTER_CONTROL", "on")
+    app.handle_direct_command("take control of my computer")
+    assert _wait(app.session_active)
+    gate = threading.Event()
+    monkeypatch.setattr(app, "_ask_ai_for_control", lambda m, t: (gate.wait(5), ai(("click", {"element": 2}),
+                                                                                   ("done", {"summary": "ok"}))(m, t))[1])
+    app.handle_direct_command("click the Search button")
+    assert _wait(lambda: app.control_active() and not isinstance(app.computer_task, app._SettingUp))
+    return gate
+
+
+def test_stop_said_during_a_task_in_a_session_cancels_the_task_but_keeps_control(monkeypatch, clean):
+    gate = _session_with_a_running_task(monkeypatch)
+    reply = app.handle_control_voice("stop")
+    assert reply.startswith("Stopped that. I'm still in control")
+    gate.set()
+    assert _wait(lambda: app.computer_task.state == "stopped")
+    assert app.session_active()
+    states = [p["data"]["state"] for p in clean if p.get("type") == "control"]
+    assert "cancelling" in states and states[-1] == "listening"   # the overlay and sidebar stay "in control"
+
+
+def test_release_control_during_a_task_ends_the_task_and_the_session(monkeypatch, clean):
+    gate = _session_with_a_running_task(monkeypatch)
+    assert app.handle_control_voice("release control") == "Stopping. You have control."
+    gate.set()
+    assert _wait(lambda: app.computer_task.state == "stopped")
+    assert not app.session_active()
+    assert [p["data"]["state"] for p in clean if p.get("type") == "control"][-1] == "stopped"
+
+
+def test_the_cancel_button_keeps_the_session_and_the_stop_button_ends_it(monkeypatch, clean):
+    gate = _session_with_a_running_task(monkeypatch)
+    assert app.cancel_control_task() is True
+    gate.set()
+    assert _wait(lambda: app.computer_task.state == "stopped")
+    assert app.session_active() and app.cancel_control_task() is False   # nothing left to cancel
+    app.stop_all_control()
+    assert not app.session_active()
+
+
+def test_a_second_task_after_a_cancelled_one_runs_without_asking_again(monkeypatch, clean):
+    gate = _session_with_a_running_task(monkeypatch)
+    app.cancel_control_task()
+    gate.set()
+    assert _wait(lambda: app.computer_task.state == "stopped")
+    sent_before = len(clean)
+    monkeypatch.setattr(app, "_ask_ai_for_control", ai(("click", {"element": 2}), ("done", {"summary": "Again."})))
+    assert app.handle_direct_command("click the Search button").startswith("On it: click the Search button")
+    assert _wait(lambda: app.computer_task.state == "completed")
+    assert not any(p.get("type") == "control_confirm" for p in clean[sent_before:])
+
+
+def test_muting_the_microphone_never_stops_or_pauses_a_running_task(monkeypatch, clean):
+    gate = _session_with_a_running_task(monkeypatch)
+    app.mic_muted.set()
+    try:
+        time.sleep(0.1)
+        assert app.computer_task.state not in ("paused", "stopped", "cancelling")
+        gate.set()
+        assert _wait(lambda: app.computer_task.state == "completed")
+        assert app.session_active()
+    finally:
+        app.mic_muted.clear()
+
+
+def test_pause_and_resume_by_voice_mid_task(monkeypatch, clean):
+    gate = _session_with_a_running_task(monkeypatch)
+    assert app.handle_control_voice("pause").startswith("Paused")
+    gate.set()
+    assert _wait(lambda: app.computer_task.state == "paused")
+    assert app.handle_control_voice("continue") == "Continuing."
+    assert _wait(lambda: app.computer_task.state == "completed")
+
+
+def test_control_reports_say_whether_a_session_holds_and_since_when(monkeypatch, clean):
+    monkeypatch.setenv("JARVIS_COMPUTER_CONTROL", "on")
+    app.handle_direct_command("take control of my computer")
+    assert _wait(app.session_active)
+    report = [p["data"] for p in clean if p.get("type") == "control"][-1]
+    assert report["state"] == "listening" and report["session"] is True and report["since"] <= time.time()
+    assert app.latest_ui_updates["control"]["data"] == report   # a window opened later sees it too
+
+
+def test_the_sidebar_take_control_asks_first_when_settings_say_ask(monkeypatch, clean):
+    monkeypatch.setenv("JARVIS_COMPUTER_CONTROL", "ask")
+    assert app.start_control_session() == "Can I use your mouse and keyboard? Say yes or no."
+    assert any(p.get("type") == "control_confirm" for p in clean)
+    assert not app.session_active()   # nothing is granted before the answer
+    app.handle_control_voice("yes")
+    assert _wait(app.session_active)
+    assert app.start_control_session().startswith("I'm already in control")
+
+
+# ---------- a whole building: a visible, stoppable task through the bridge only ----------
+
+def test_a_whole_building_runs_as_a_stoppable_task_through_the_bridge_without_asking_for_the_mouse(monkeypatch,
+                                                                                                   clean):
+    import blender_build
+    monkeypatch.setenv("JARVIS_COMPUTER_CONTROL", "off")   # the mouse is off; the bridge needs none of it
+    monkeypatch.setattr(app.blender_control, "BlenderBridge",
+                        lambda: SimpleNamespace(ping=lambda timeout=0: True))
+    ran = []
+
+    def stage(name, state="acting"):
+        def action():
+            ran.append(name)
+            return f"{name} done."
+        action.state = state
+        return action
+    steps = blender_build.BuildSteps([("Planning the building", stage("plan", "planning")),
+                                      ("Building the walls", stage("walls")),
+                                      ("Checking", stage("check", "verifying"))])
+    monkeypatch.setattr(app.blender_commands, "steps_for", lambda goal, session, bridge: steps)
+    reply = app.run_blender_directly("create a villa")
+    assert reply.startswith("On it")
+    assert _wait(lambda: app.computer_task is not None and app.computer_task.state == "completed")
+    assert ran == ["plan", "walls", "check"]
+    states = [p["data"]["state"] for p in clean if p.get("type") == "control"]
+    assert {"planning", "acting", "verifying"} <= set(states) and states[-1] == "completed"
+    assert not any(p.get("type") == "control_confirm" for p in clean)
+    assert app.announcements.get(timeout=1) == "check done."
+
+
+def test_a_task_from_the_panel_plans_checks_the_result_and_shows_the_screen(monkeypatch, clean):
+    from PIL import Image
+
+    class Pictured(FakeScreen):
+        def observe(self):
+            observation = super().observe()
+            observation.screenshot = Image.new("RGB", (1600, 900), (20, 40, 80))
+            return observation
+    monkeypatch.setenv("JARVIS_COMPUTER_CONTROL", "on")
+    monkeypatch.setattr(app, "computer_environment", Pictured)
+    previews = []
+    monkeypatch.setattr(app, "send_ui_update", lambda kind, data: previews.append(data) if kind == "control_preview" else None)
+    monkeypatch.setattr(app, "_ask_ai_for_control", ai(
+        ("plan", {"steps": ["Type cats in the search field", "Press Enter"]}),
+        ("type_text", {"element": 1, "text": "cats", "press_enter": True}),
+        ("done", {"summary": "Searched for cats."}),
+        ("verdict", {"achieved": True, "evidence": "Results for cats are on screen."})))
+    reply = app.start_computer_task("search the page for cats and show the results", persistent=True)
+    assert reply.startswith("Okay")
+    for _ in range(300):
+        if app.computer_task is not None and app.computer_task.state == "completed":
+            break
+        time.sleep(0.02)
+    task = app.computer_task
+    assert task.state == "completed" and task.verified is True
+    states = [p["data"] for p in clean if p.get("type") == "control"]
+    assert "planning" in [s["state"] for s in states]
+    last = states[-1]
+    assert last["state"] == "listening" and last["outcome"] == "completed" and last["verified"] is True
+    assert last["plan"] == ["Type cats in the search field", "Press Enter"]
+    assert previews and previews[-1]["image"].startswith("data:image/jpeg;base64,") and previews[-1]["app"] == "FakeApp"

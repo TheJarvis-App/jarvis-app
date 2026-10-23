@@ -1016,3 +1016,36 @@ kbd { padding: 1px 6px; border: 1px solid rgb(var(--accent-rgb) / .4); border-ra
 .phone-pairing-qr { width: 220px; height: 220px; margin: 16px auto; padding: 12px; background: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
 .phone-pairing-qr svg { width: 100%; height: 100%; }
 #phonePairingAddress { font: 500 13px/1.3 var(--mono); word-break: break-all; }
+
+/* ---------- Sidebar quick controls: anchored under the scrolling list (the list above is the one that scrolls) ---------- */
+.side-controls { flex: none; display: flex; flex-direction: column; gap: 6px; padding-top: 10px; padding-bottom: 10px; }
+.side-controls [hidden] { display: none !important; }   /* the rules below set display; hidden must still win */
+.sc-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.sc-btn { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; min-width: 0;
+  min-height: 42px; padding: 6px 9px; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font: 500 12.5px/1.2 var(--sans); text-align: left; cursor: pointer; transition: background .2s, border-color .2s, color .2s; }
+.sc-btn:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border-strong); }
+.sc-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sc-btn:disabled { opacity: .45; cursor: not-allowed; }
+.sc-ic { width: 18px; height: 18px; color: var(--muted); }
+.sc-btn .ic-off, .sc-btn.is-off .ic-on { display: none; }
+.sc-btn.is-off .ic-off { display: block; }
+.sc-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sc-label, .sc-state { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-state { font: 500 10.5px/1.1 var(--mono); letter-spacing: .04em; color: var(--muted); }
+.sc-btn.is-off { border-color: rgb(255 107 129 / .45); background: rgb(255 107 129 / .1); }
+.sc-btn.is-off .sc-state, .sc-btn.is-off .sc-ic { color: var(--danger); }
+.sc-btn.is-warn .sc-state { color: #ffd166; }
+.sc-btn.is-on { border-color: rgb(255 176 72 / .55); background: rgb(255 176 72 / .1); }   /* the overlay's amber */
+.sc-btn.is-on .sc-state, .sc-btn.is-on .sc-ic { color: rgb(255 176 72); }
+.sc-task { display: flex; flex-direction: column; gap: 6px; padding: 7px 9px; border: 1px solid var(--border); background: var(--surface); }
+.sc-detail { margin: 0; font-size: 12px; line-height: 1.35; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; }
+.sc-actions { display: flex; gap: 6px; }
+.sc-actions .ghost { flex: 1; }
+.sc-status { display: flex; align-items: center; gap: 8px; margin: 0 2px; font-size: 11.5px; color: var(--faint); min-width: 0; }
+.sc-status span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-status i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.sc-status[data-tone="warn"] i { background: #ffd166; }
+.sc-status[data-tone="bad"] i { background: var(--danger); }
+@media (prefers-reduced-motion: reduce) { .sc-btn { transition: none; } }

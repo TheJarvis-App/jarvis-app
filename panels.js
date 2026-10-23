@@ -357,7 +357,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // =====================================================================================================
   // Computer control: the question before Jarvis starts, and relaying the overlay's buttons (see main.js)
   // =====================================================================================================
-  const CONTROL_ACTIVE = new Set(['starting', 'observing', 'thinking', 'acting', 'waiting', 'paused']);
+  const CONTROL_ACTIVE = new Set(['starting', 'planning', 'observing', 'thinking', 'acting', 'verifying', 'waiting',
+    'paused', 'cancelling', 'recovering']);
   const controlLayer = $('controlLayer');
   for (const key of document.querySelectorAll('.control-key')) key.textContent = process.platform === 'darwin' ? '⌃⌥Q' : 'Ctrl+Alt+Q';
   let controlStateName = '';

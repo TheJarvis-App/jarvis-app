@@ -21,6 +21,15 @@ document.addEventListener('DOMContentLoaded', () => {
   let reconnectTimer = null;
   let isMuted = false;
   let toggledAt = 0;
+  const side = { connected: false, control: null, micProblem: '', voice: 'idle' };   // see "Sidebar controls"
+  const CONTROL_ON = new Set(['starting', 'planning', 'observing', 'thinking', 'acting', 'verifying', 'waiting', 'paused',
+    'cancelling', 'recovering', 'listening']);
+  const CONTROL_WORDS = { starting: 'Starting', planning: 'Planning', observing: 'Looking', thinking: 'Thinking',
+    acting: 'Working', verifying: 'Checking', waiting: 'Needs your OK', paused: 'Paused', cancelling: 'Stopping…',
+    recovering: 'Recovering',
+    listening: 'On · waiting' };
+  const VOICE_WORDS = { idle: 'Listening', listening: 'Hearing you', sleeping: 'Waiting for “Hey Jarvis”',
+    thinking: 'Thinking', speaking: 'Speaking', muted: 'Microphone off', generating: 'Creating an image' };
   let messageCount = 0;
   let typingEl = null;
   let captionTimer = null;
@@ -47,6 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
     everConnected = everConnected || connected;
     app.classList.toggle('is-connected', connected);
     $('connectionText').textContent = connected ? 'Connected' : everConnected ? 'Reconnecting…' : 'Starting…';
+    side.connected = connected;
+    renderSide();
   }
   function scheduleReconnect() {
     if (reconnectTimer) return;
@@ -57,7 +68,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setConnection(false);
     try {
       socket = new WebSocket(new URLSearchParams(location.search).get('ws') || 'ws://127.0.0.1:8765');
-      socket.onopen = () => { setConnection(true); window.dispatchEvent(new CustomEvent('jarvis-connected')); };
+      socket.onopen = () => {
+        setConnection(true);
+        toggledAt = Date.now();   // the engine's replayed mic state may still say the old value: ignore it briefly
+        socket.send(JSON.stringify({ type: isMuted ? 'mute' : 'unmute' }));
+        window.dispatchEvent(new CustomEvent('jarvis-connected'));
+      };
       socket.onclose = () => { setConnection(false); scheduleReconnect(); };
       socket.onerror = () => setConnection(false);
       socket.onmessage = handleMessage;
@@ -85,6 +101,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state === 'muted' && !isMuted) applyMute(true, false);
 
     app.dataset.state = state;
+    side.voice = state;
+    renderSide();
     swapText($('stateTitle'), STATES[state].title);
     swapText($('stateSub'), STATES[state].sub);
     if (window.setOrbState) window.setOrbState(state);
@@ -657,6 +675,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.type === 'timer_done' && data.data) showAlert(data.data);
       if (data.type === 'dismiss_alert' && alerts.length) dismissAlert(alerts.length);
       if (data.type === 'speak_volume' && data.data) applySpeakVolume(data.data);
+      if (data.type === 'mic_state' && data.data) applyMicState(data.data);
+      if (data.type === 'mic' && data.data) { side.micProblem = data.data.ok ? '' : (data.data.message || 'Microphone unavailable'); renderSide(); }
+      if (data.type === 'control' && data.data) { side.control = data.data; renderSide(); }
     } catch (error) {
       console.error('Error handling WebSocket message:', error);
     }
@@ -713,6 +734,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('pillText').textContent = muted ? 'Microphone off' : 'Microphone on';
     $('buttonHint').textContent = muted ? 'unmute' : 'mute';
     muted ? stopVoiceMeter() : startVoiceMeter();
+    renderSide();
     if (notify) {
       toggledAt = Date.now();
       if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: muted ? 'mute' : 'unmute' }));
@@ -724,6 +746,67 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   $('stopBtn').addEventListener('click', () => { if (app.dataset.state === 'speaking') interruptSpeech(); });
   connectBtn.addEventListener('click', () => applyMute(!isMuted));
+
+  // ---------- Sidebar controls (bottom of the left rail): microphone, Take Control, what Jarvis is doing ----------
+  // Nothing here keeps its own idea of the state: it draws what the engine last reported (mic_state, mic, control,
+  // status) and sends the same commands the dock, the overlay and voice do.
+  function applyMicState(data) {
+    const fresh = Date.now() - toggledAt < TOGGLE_GRACE_MS;
+    if (!fresh && Boolean(data.muted) !== isMuted) {
+      applyMute(Boolean(data.muted), false);
+      setState(isMuted ? 'muted' : 'idle');
+    }
+  }
+  function sideSend(payload) {
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+  }
+  function renderSide() {
+    if (!$('sideControls')) return;
+    const { connected, control, micProblem, voice } = side;
+    // Microphone
+    const mic = $('scMic');
+    mic.disabled = !connected;
+    mic.setAttribute('aria-pressed', String(isMuted));
+    mic.classList.toggle('is-off', isMuted);
+    mic.classList.toggle('is-warn', !isMuted && Boolean(micProblem));
+    $('scMicState').textContent = isMuted ? 'Off' : micProblem ? 'Unavailable' : 'On';
+    $('pillText').textContent = isMuted ? 'Microphone off' : micProblem ? 'Microphone unavailable' : 'Microphone on';
+    mic.title = isMuted ? 'Turn the microphone on (M)' : micProblem || 'Mute the microphone (M)';
+    mic.setAttribute('aria-label', `Microphone ${isMuted ? 'off' : micProblem ? 'unavailable' : 'on'}. ${isMuted ? 'Turn on' : 'Mute'}`);
+    // Take Control
+    const state = control?.state || 'stopped';
+    const on = CONTROL_ON.has(state);
+    const working = on && state !== 'listening';
+    const ctl = $('scControl');
+    ctl.disabled = !connected || state === 'cancelling';
+    ctl.setAttribute('aria-pressed', String(on));
+    ctl.classList.toggle('is-on', on);
+    $('scControlState').textContent = on ? CONTROL_WORDS[state] : 'Off';
+    ctl.querySelector('.sc-label').textContent = on ? (control.session || !working ? 'End control' : 'Stop task') : 'Take control';
+    ctl.title = on ? 'Stop, and give you back the mouse and keyboard' : 'Let Jarvis use the computer for your next commands (asks first)';
+    $('scTask').hidden = !working;
+    if (working) {
+      const seconds = Math.max(0, Math.round(Date.now() / 1000 - (Number(control.since) || Date.now() / 1000)));
+      $('scDetail').textContent = (control.detail || CONTROL_WORDS[state]) + (seconds >= 5 && state !== 'paused' ? ` · ${seconds} s` : '');
+      $('scPause').textContent = state === 'paused' ? 'Resume' : 'Pause';
+      $('scPause').hidden = state === 'cancelling';
+      $('scCancel').hidden = !control.session || state === 'cancelling';   // without a session, Stop task is the cancel
+    }
+    // One line: is the engine there, and what is the voice side doing
+    const status = $('scStatus');
+    status.dataset.tone = !connected ? 'bad' : isMuted || micProblem ? 'warn' : 'ok';
+    $('scStatusText').textContent = !connected ? 'Disconnected — the engine isn’t running'
+      : isMuted ? 'Microphone off · type to Jarvis' : micProblem ? 'No microphone · type to Jarvis'
+      : VOICE_WORDS[voice] || 'Connected';
+  }
+  $('scMic').addEventListener('click', () => applyMute(!isMuted));
+  $('scControl').addEventListener('click', () => {
+    const on = CONTROL_ON.has(side.control?.state || 'stopped');
+    sideSend({ type: 'control_command', action: on ? 'release' : 'start' });
+  });
+  $('scPause').addEventListener('click', () => sideSend({ type: 'control_command', action: side.control?.state === 'paused' ? 'resume' : 'pause' }));
+  $('scCancel').addEventListener('click', () => sideSend({ type: 'control_command', action: 'cancel' }));
+  setInterval(() => { if (!$('scTask').hidden) renderSide(); }, 1000);   // the seconds on a long step
 
   // ---------- Jarvis's own speaking volume (separate from the mic above) ----------
   const speakVolWrap = $('speakVol'), speakVolBtn = $('speakVolBtn'), speakVolSlider = $('speakVolSlider');
@@ -802,7 +885,7 @@ document.addEventListener('DOMContentLoaded', () => {
     void $('typeForm').offsetWidth;
     $('typeForm').classList.add('nope');
     clearTimeout(flashTypebarNotice._t);
-    flashTypebarNotice._t = setTimeout(() => { typeInput.placeholder = 'Type a message or a number to Jarvis…'; }, 2600);
+    flashTypebarNotice._t = setTimeout(() => { typeInput.placeholder = 'Type to Jarvis…'; }, 2600);
   }
   function renderAttachPreview() {
     attachPreview.hidden = !stagedImage;
@@ -863,7 +946,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (sent.length > 30) sent.shift();
     sentAt = sent.length;
     typeInput.value = '';
-    typeInput.placeholder = 'Type a message or a number to Jarvis…';
+    typeInput.placeholder = 'Type to Jarvis…';
     $('typeForm').classList.remove('sent');
     void $('typeForm').offsetWidth;
     $('typeForm').classList.add('sent');

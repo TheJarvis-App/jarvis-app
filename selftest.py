@@ -67,6 +67,16 @@ def run() -> int:
         settings.update({"WEATHER_CITY": settings.get("WEATHER_CITY") or "London"})
         return f"ok ({paths.DATA_DIR})"
 
+    def blender_files():
+        # Blender runs these as real .py files: a frozen module alone would leave Blender work without its bridge.
+        import blender_control
+        missing = [p for p in (blender_control.bridge_script(),) if not os.path.exists(p)]
+        blender_control.kit_source()
+        if missing:
+            raise FileNotFoundError(", ".join(missing))
+        return "ok"
+    ok = _check(results, "blender_files", blender_files) and ok
+
     def local_ai_download():
         import local_ai
         name, size, _sha = local_ai.LocalAI(report=lambda state: None)._asset()

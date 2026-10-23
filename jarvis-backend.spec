@@ -33,6 +33,8 @@ hiddenimports += ["tzdata", "forecast", "web_search"]
 datas += [(f, ".") for f in ("phone_client.html", "phone_sw.js", "confirm.html", "phone_manifest.webmanifest", "phone_agent.js")]
 datas += [("phone_icons", "phone_icons")]
 datas += [("geo_data", "geo_data")]   # country borders and populated places for the globe (geo.py): Natural Earth
+# The script Blender itself runs (blender_control.bridge_script): Blender needs a real .py file, not a frozen module
+datas += [("blender_bridge.py", "."), ("blender_scene.py", ".")]   # blender_scene: see with_kit
 
 if sys.platform == "win32":
     for package in ("uiautomation", "comtypes", "pycaw"):

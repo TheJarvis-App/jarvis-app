@@ -218,7 +218,11 @@ def test_nothing_is_written_outside_the_project(tmp_path, path):
 def test_a_link_that_leads_out_of_the_project_is_refused(tmp_path):
     (tmp_path / "project").mkdir()
     (tmp_path / "elsewhere").mkdir()
-    os.symlink(tmp_path / "elsewhere", tmp_path / "project" / "link")
+    try:
+        os.symlink(tmp_path / "elsewhere", tmp_path / "project" / "link")
+    except OSError:   # Windows without Developer Mode can't make symlinks; a junction leads out the same way
+        import _winapi
+        _winapi.CreateJunction(str(tmp_path / "elsewhere"), str(tmp_path / "project" / "link"))
     with pytest.raises(coder.CodeError):
         coder.safe_path(str(tmp_path / "project"), "link/x.py")
 
@@ -237,7 +241,7 @@ def test_checks_say_which_tool_is_missing_instead_of_passing(tmp_path, monkeypat
 
 
 def test_checking_never_runs_the_code(tmp_path):
-    (tmp_path / "boom.py").write_text(f"open({str(tmp_path / 'ran.txt')!r}, 'w').write('x')\n")
+    (tmp_path / "boom.py").write_text(f"open({str(tmp_path / 'ran.txt')!r}, 'w').write('x')\n", encoding="utf-8")
     assert coder.check_project(str(tmp_path))[0]["status"] == "ok" and not (tmp_path / "ran.txt").exists()
 
 
