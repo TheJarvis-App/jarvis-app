@@ -230,6 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
         row.append(text, input);
         section.append(row);
       }
+      if (name === 'Quick Access') section.append(quickStatusRow());
       blocks.push(section);
     }
     // Things only the window can do
@@ -264,6 +265,50 @@ document.addEventListener('DOMContentLoaded', () => {
     body.replaceChildren(...blocks);
     $('settingsSave').disabled = true;
   }
+
+  // Quick Access: whether its shortcut is really registered with the system, and a way to try it (see quick.js)
+  let quickStatus = null;
+  let quickKeys = null;   // the engine's side: whether it can watch for the hold / double press (Input Monitoring)
+  window.addEventListener('jarvis-message', (e) => {
+    if (e.detail?.type !== 'quick_keys') return;
+    quickKeys = e.detail.data;
+    document.querySelectorAll('.quick-status-text').forEach((n) => { n.textContent = quickStatusText(quickStatus); });
+  });
+  function quickStatusText(st) {
+    if (!st) return 'Checking…';
+    if (!st.enabled) return 'Off.';
+    if (!st.ok) return st.message;
+    if (st.gesture && quickKeys && quickKeys.gesture === st.shortcut && !quickKeys.ok) return quickKeys.message;
+    return `${st.label} opens it from any app.`;
+  }
+  function quickStatusRow() {
+    const row = make('div', 'set-row quick-status');
+    const text = make('div', 'set-text');
+    const label = make('label', '', 'Shortcut status');
+    const note = make('small', 'quick-status-text', quickStatusText(quickStatus));
+    text.append(label, note);
+    const test = make('button', 'ghost', 'Test shortcut');
+    test.type = 'button';
+    test.addEventListener('click', async () => {
+      await ipcRenderer.invoke('quick-test');
+      note.textContent = 'Switch to another app and press the shortcut now…';
+    });
+    row.append(text, test);
+    ipcRenderer.invoke('quick-status').then((st) => { quickStatus = st; note.textContent = quickStatusText(st); });
+    return row;
+  }
+  ipcRenderer.on('quick-status', (_e, st) => {
+    quickStatus = st;
+    document.querySelectorAll('.quick-status-text').forEach((n) => { n.textContent = quickStatusText(st); });
+  });
+  ipcRenderer.on('quick-tested', () => {
+    document.querySelectorAll('.quick-status-text').forEach((n) => { n.textContent = `It works: ${quickStatus?.label || 'the shortcut'} opened Quick Access.`; });
+  });
+  // "Open the 3D model in Jarvis" from the bar: the window comes up showing it
+  ipcRenderer.on('quick-open-visual', (_e, what) => {
+    const reopen = { projector: window.reopenProjector, graph: window.reopenGraph, globe: window.reopenGlobe, planet: window.reopenPlanet }[what];
+    if (reopen) setTimeout(() => reopen('last'), 120);
+  });
 
   $('settingsBtn').addEventListener('click', openSettings);
   $('settingsClose').addEventListener('click', closeSettings);

@@ -93,7 +93,13 @@ class FakeSpotify:
         return {"tracks": {"items": []}}
 
     def start_playback(self, device_id=None, context_uri=None, uris=None, **kw):
-        self.calls.append(("play", context_uri or uris))
+        if context_uri or uris:   # (a bare start_playback() is "press play": Spotify keeps what it has)
+            self.calls.append(("play", context_uri or uris))
+            self.playing = {"is_playing": True, "context": {"uri": context_uri} if context_uri else None,
+                            "item": {"uri": (uris or [None])[0]}}
+
+    def current_playback(self):   # a Spotify that really starts what it's asked to (Jarvis checks before saying so)
+        return getattr(self, "playing", None)
 
     def shuffle(self, state, device_id=None):
         self.calls.append(("shuffle", state))

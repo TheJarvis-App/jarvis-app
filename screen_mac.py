@@ -5,6 +5,8 @@ for the first time. Screenshots additionally need Screen Recording; without it J
 information alone.
 """
 import os
+import re
+import subprocess
 import time
 
 import computer_use
@@ -48,6 +50,56 @@ MAX_VISITED = 3000
 TIME_BUDGET = 2.5         # seconds per read of a window: a busy app must not stall a step
 AX_TIMEOUT = 1.0          # seconds per accessibility request (macOS waits 6 by default, e.g. while a menu is open)
 MAX_ELEMENTS = 400
+
+
+# ---------- which app is in front, read fresh ----------
+# AppKit's NSWorkspace.frontmostApplication() and runningApplications() never change in a process that doesn't run a
+# Cocoa event loop, and Jarvis's engine doesn't: they keep naming whatever was in front when it started (measured: they
+# said "Google Chrome" while Spotify had been brought to the front). So "is Spotify in front yet?" never came true, and
+# taking control gave up. These ask the system's launch services (lsappinfo) each time instead, and look the app up by
+# its process, which is always current.
+def _lsappinfo(*args: str) -> str:
+    try:
+        return subprocess.run(["lsappinfo", *args], capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _app_for(asn: str):
+    found = re.search(r'"pid"\s*=\s*(\d+)', _lsappinfo("info", "-only", "pid", asn.strip())) if asn.strip() else None
+    return AppKit.NSRunningApplication.runningApplicationWithProcessIdentifier_(int(found.group(1))) if found and AppKit else None
+
+
+def front_app():
+    """The app in front right now (an NSRunningApplication), or None."""
+    app = _app_for(_lsappinfo("front"))
+    if app is not None:
+        return app
+    if Quartz is None or AppKit is None:   # no lsappinfo: the window server's top normal window belongs to the front app
+        return None
+    for info in Quartz.CGWindowListCopyWindowInfo(Quartz.kCGWindowListOptionOnScreenOnly, Quartz.kCGNullWindowID) or []:
+        if info.get("kCGWindowLayer", 0) == 0:
+            return AppKit.NSRunningApplication.runningApplicationWithProcessIdentifier_(info.get("kCGWindowOwnerPID"))
+    return None
+
+
+def front_name() -> str:
+    app = front_app()
+    return (app.localizedName() or "") if app is not None else ""
+
+
+def running_app(name: str):
+    """The running app with this name (as the Dock shows it), read fresh, or None."""
+    # lsappinfo prints each match as ASN:0x0-0x1e41e4-"Spotify": (the name is part of it); info wants ASN:0x0-0x1e41e4:
+    for high, low in re.findall(r"ASN:(0x[0-9A-Fa-f]+)-(0x[0-9A-Fa-f]+)", _lsappinfo("find", f"LSDisplayName={name}")):
+        app = _app_for(f"ASN:{high}-{low}:")
+        if app is not None:
+            return app
+    return None
+
+
+def same_app(a, b) -> bool:
+    return a is not None and b is not None and a.processIdentifier() == b.processIdentifier()
 
 
 def _attr(element, name):
@@ -111,8 +163,7 @@ class MacScreen(computer_use.Environment):
     # ---------- looking ----------
     def _target_app(self):
         """The app the user is working in: the front app, or the one behind Jarvis's own window."""
-        workspace = AppKit.NSWorkspace.sharedWorkspace()
-        front = workspace.frontmostApplication()
+        front = front_app()
         if front and (front.localizedName() or "").lower() not in OWN_APPS:
             return front
         windows = Quartz.CGWindowListCopyWindowInfo(
@@ -225,18 +276,18 @@ class MacScreen(computer_use.Environment):
     def _bring_forward(self) -> None:
         """Keys and clicks go to the front app: if that is Jarvis's own window, put the app being worked in first."""
         target = getattr(self, "_target", None)
-        front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+        front = front_app()
         if target is None or front is None or (front.localizedName() or "").lower() not in OWN_APPS:
             return
         target.activateWithOptions_(AppKit.NSApplicationActivateIgnoringOtherApps)
         for _ in range(10):
             time.sleep(0.05)
-            if AppKit.NSWorkspace.sharedWorkspace().frontmostApplication() == target:
+            if same_app(front_app(), target):
                 break
 
     def focus_moved(self) -> bool:
         target = getattr(self, "_target", None)
-        front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+        front = front_app()
         if target is None or front is None or (front.localizedName() or "").lower() in OWN_APPS:
             return False
         return front.processIdentifier() != target.processIdentifier()
@@ -350,8 +401,12 @@ class MacScreen(computer_use.Environment):
 
     def switch_window(self, title: str) -> str:
         wanted = title.split(":", 1)[0].strip().lower()
-        for app in AppKit.NSWorkspace.sharedWorkspace().runningApplications():
-            if (app.localizedName() or "").lower() == wanted:
-                app.activateWithOptions_(AppKit.NSApplicationActivateIgnoringOtherApps)
-                return ""
+        app = running_app(title.split(":", 1)[0].strip())
+        if app is None:   # the name as typed may differ in case from the Dock's: try what lsappinfo lists
+            listed = re.findall(r'"LSDisplayName"="([^"]+)"', _lsappinfo("list"))
+            name = next((n for n in listed if n.lower() == wanted), "")
+            app = running_app(name) if name else None
+        if app is not None:
+            app.activateWithOptions_(AppKit.NSApplicationActivateIgnoringOtherApps)
+            return ""
         return f"No open app called “{title}”."

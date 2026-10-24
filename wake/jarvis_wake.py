@@ -20,6 +20,15 @@ needs nothing new): it serves the phone app's page, and when a phone that's genu
 and steps aside. Jarvis takes over the port a few seconds later and the phone reconnects to him on its own. An
 unpaired phone, or anything not on the local network, can't start anything. While Jarvis runs, the port is his.
 
+Opening Jarvis by holding ⌘ Command (CommandHold)
+Holding ⌘ Command alone for three seconds opens Jarvis's Quick Access bar. While Jarvis runs, his own engine watches
+for that (quick_keys.py); while he's closed, this does, and starts him in the background with the bar open (no main
+window). Only the state of the modifier keys is read, about 60 times a second, through CoreGraphics; no key is ever
+intercepted, and no keystroke is read (only whether keys are down, and how many were pressed), which needs no
+permission. Any other key or modifier pressed during the hold (⌘C, ⌘Tab) cancels it; every hold of a second or more
+is logged with how it ended.
+Mouse clicks don't cancel a hold (an auto-clicker, a stray tap), but a button held when the time is up (a ⌘-drag) does.
+
 Started at sign-in by the LaunchAgent io.github.arielzaha.jervis-wake (see install.sh). Log: ~/Library/Logs/JarvisWake.
 """
 import asyncio
@@ -79,15 +88,26 @@ def load_config() -> dict:
 
 # ---------- is Jarvis running? ----------
 def jarvis_running(config: dict) -> bool:
-    """The Jarvis window started from the project, its engine (app.py), or the installed Jarvis app."""
-    patterns = [config["electron"], os.path.join(config["project"], "app.py"), "/Jarvis.app/Contents/MacOS/Jarvis",
-                "/Jervis.app/Contents/MacOS/Jervis"]   # an installed copy from before the rename
-    for pattern in patterns:
-        try:
-            if subprocess.run(["pgrep", "-f", pattern], capture_output=True, timeout=3).returncode == 0:
-                return True
-        except (OSError, subprocess.SubprocessError):
-            pass
+    """The Jarvis window started from the project, its engine (app.py), or the installed Jarvis app.
+
+    Read from one listing of the processes, matched on what each one runs. (It used to ask pgrep for each pattern, and
+    pgrep also matches the other pgreps this file's threads run at the same moment, whose command lines contain the
+    very same paths: Jarvis looked "running" for an instant, which closed the phone door and swallowed a ⌘ hold.)"""
+    try:
+        listing = subprocess.run(["ps", "-axo", "command="], capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    engine = os.path.join(config["project"], "app.py")
+    installed = ("/Jarvis.app/Contents/MacOS/Jarvis", "/Jervis.app/Contents/MacOS/Jervis")   # (an installed copy from before the rename)
+    for line in listing.splitlines():
+        parts = line.split()
+        if not parts:
+            continue
+        program = parts[0]
+        if program == config["electron"] or program.endswith(installed):
+            return True
+        if os.path.basename(program).startswith("python") and len(parts) > 1 and parts[1] == engine:
+            return True
     return False
 
 
@@ -95,11 +115,12 @@ _launch_lock = threading.Lock()
 _last_launch = [0.0]
 
 
-def claim_launch(config: dict) -> bool:
+def claim_launch(config: dict, grace: float = AFTER_LAUNCH_GRACE) -> bool:
     """True if it's this caller's turn to start Jarvis: not already running, and no launch (by voice or by phone)
-    in the last AFTER_LAUNCH_GRACE seconds — the phone retrying, or both at once, must never start two Jarvises."""
+    in the last `grace` seconds — the phone retrying, or both at once, must never start two Jarvises. (A ⌘ hold is
+    deliberate: it only needs Jarvis not running, a starting Jarvis already counts as running, so its grace is short.)"""
     with _launch_lock:
-        if time.time() - _last_launch[0] < AFTER_LAUNCH_GRACE or jarvis_running(config):
+        if time.time() - _last_launch[0] < grace or jarvis_running(config):
             return False
         _last_launch[0] = time.time()
         return True
@@ -113,8 +134,9 @@ def recently_launched() -> bool:
     return time.time() - _last_launch[0] < AFTER_LAUNCH_GRACE
 
 
-def launch_jarvis(config: dict, voice: bool = True) -> bool:
-    """Start the normal Jarvis window (it starts app.py from the project's venv itself); woken by voice, it greets."""
+def launch_jarvis(config: dict, voice: bool = True, quick: bool = False) -> bool:
+    """Start the normal Jarvis window (it starts app.py from the project's venv itself); woken by voice, it greets.
+    quick: started by holding ⌘, Jarvis starts in the background and opens only his Quick Access bar."""
     electron, project = config["electron"], config["project"]
     if not os.path.exists(electron):
         log.error("Jarvis's window isn't installed at %s. Run `npm install` in %s once.", electron, project)
@@ -123,11 +145,13 @@ def launch_jarvis(config: dict, voice: bool = True) -> bool:
     env.pop("ELECTRON_RUN_AS_NODE", None)          # set in VS Code terminals; Electron would start as plain Node
     if voice:
         env["JARVIS_WOKEN_BY_VOICE"] = "1"         # Jarvis says "I'm awake, how can I help you?" once it's up
+    if quick:
+        env["JARVIS_QUICK_OPEN"] = "1"
     env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + env.get("PATH", "/usr/bin:/bin")
     try:
         out = open(os.path.join(LOG_DIR, "jarvis-window.log"), "a", encoding="utf-8")
-        subprocess.Popen([electron, project], cwd=project, env=env, stdout=out, stderr=subprocess.STDOUT,
-                         stdin=subprocess.DEVNULL)
+        subprocess.Popen([electron, project] + (["--hidden"] if quick else []), cwd=project, env=env, stdout=out,
+                         stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
         return True
     except OSError as e:
         log.error("Couldn't start Jarvis: %s", e)
@@ -553,6 +577,95 @@ class Listener:
                         return False
 
 
+# ---------- opening Jarvis by holding ⌘ Command ----------
+HOLD_SECONDS = 3.0
+_COMBINED = 0                                   # kCGEventSourceStateCombinedSessionState: the keyboard and posted keys
+_MASKS = {"command": 1 << 20, "shift": 1 << 17, "control": 1 << 18, "option": 1 << 19}
+_PRESSES = (10,)                                # key down (clicks don't spoil a hold: an auto-clicker, a stray tap)
+
+
+def hold_wanted(config: dict) -> bool:
+    """Whether Settings → Quick Access has the bar on with "Hold ⌘ Command for 3 seconds" (the Mac's default)."""
+    try:
+        with open(os.path.join(config["project"], "settings.json"), encoding="utf-8") as f:
+            values = json.load(f).get("values") or {}
+    except (OSError, ValueError):
+        values = {}
+    return values.get("JARVIS_QUICK", "on") != "off" and values.get("JARVIS_QUICK_SHORTCUT", "hold-command") == "hold-command"
+
+
+class CommandHold:
+    """⌘ held alone for HOLD_SECONDS, while Jarvis is closed: start him with the Quick Access bar open."""
+
+    def __init__(self, config: dict):
+        import ctypes
+        self.config = config
+        cg = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+        cg.CGEventSourceFlagsState.restype, cg.CGEventSourceFlagsState.argtypes = ctypes.c_uint64, [ctypes.c_int32]
+        cg.CGEventSourceCounterForEventType.restype = ctypes.c_uint32
+        cg.CGEventSourceCounterForEventType.argtypes = [ctypes.c_int32, ctypes.c_uint32]
+        cg.CGEventSourceButtonState.restype, cg.CGEventSourceButtonState.argtypes = ctypes.c_bool, [ctypes.c_int32, ctypes.c_uint32]
+        self.cg = cg
+
+    def sample(self):
+        flags = self.cg.CGEventSourceFlagsState(_COMBINED)
+        held = bool(flags & _MASKS["command"])
+        others = any(flags & m for k, m in _MASKS.items() if k != "command")
+        count = sum(self.cg.CGEventSourceCounterForEventType(_COMBINED, e) for e in _PRESSES)
+        return held, others, count
+
+    def run(self) -> None:
+        down_at, down_count, spent, armed = None, 0, False, False
+        why, fired = "", False
+        closed, checked = True, 0.0
+        while True:
+            now = time.monotonic()
+            if now - checked > CHECK_JARVIS_EVERY:   # Jarvis running: his own engine watches for the hold
+                closed = hold_wanted(self.config) and not jarvis_running(self.config) and time.time() - _last_launch[0] > 5
+                checked = now
+            if not closed:
+                down_at, armed = None, False   # watching again later: a press already under way won't count
+                time.sleep(0.5)
+                continue
+            held, others, count = self.sample()
+            if not held:
+                if down_at is not None and now - down_at >= 1.0 and not fired:   # a hold that didn't open: say why
+                    log.info("⌘ held %.1f s: %s.", now - down_at, why or "let go before 3 s")
+                down_at, spent, armed, why, fired = None, False, True, "", False
+            elif down_at is None:
+                down_at, down_count, spent = now, count, others or not armed
+                why = "another modifier was held too" if others else "it was already down when watching began" if not armed else ""
+            else:
+                if not spent and (others or count != down_count):
+                    spent = True                      # used for a shortcut (⌘C, ⌘Tab, ⌘-click)
+                    why = "another key, click or modifier was pressed during it"
+                if not spent and now - down_at >= HOLD_SECONDS:
+                    spent = True
+                    if any(self.cg.CGEventSourceButtonState(_COMBINED, b) for b in (0, 1, 2)):
+                        why = "a mouse button was down (dragging with ⌘)"
+                        continue
+                    fired = True
+                    if claim_launch(self.config, grace=5):
+                        log.info("⌘ held for %g s: opening Jarvis with the Quick Access bar.", HOLD_SECONDS)
+                        launch_jarvis(self.config, voice=False, quick=True)
+                        checked = 0.0
+            time.sleep(0.016)
+
+
+def keep_command_hold(config: dict) -> None:
+    try:
+        hold = CommandHold(config)
+    except (OSError, AttributeError) as e:
+        log.error("Can't watch for ⌘ held (%s); ⌥ Space opens Quick Access once Jarvis runs.", e)
+        return
+    while True:
+        try:
+            hold.run()
+        except Exception:
+            log.exception("The ⌘ hold watcher stopped; starting it again in 5 s.")
+            time.sleep(5)
+
+
 def check() -> int:
     """`jarvis_wake.py --check`: everything loads (packages, speech model, settings), without opening the microphone."""
     import numpy  # noqa: F401
@@ -581,6 +694,7 @@ def main() -> None:
     log.info("Jarvis Wake started (Jarvis: %s).", config["project"])
     threading.Thread(target=keep_phone_door, args=(config,), daemon=True, name="phone-door-keeper").start()
     threading.Thread(target=keep_relay_door, args=(config,), daemon=True, name="relay-door-keeper").start()
+    threading.Thread(target=keep_command_hold, args=(config,), daemon=True, name="command-hold").start()
     listener = Listener(config)
     while True:
         try:

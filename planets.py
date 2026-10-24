@@ -35,7 +35,7 @@ BODIES = {
     "neptune": {"name": "Neptune", "kind": "planet", "texture": "2k_neptune.jpg", "radius_km": 24622, "day_hours": 16.11,
                 "year_days": 60190, "distance_million_km": 4495, "moons": 16, "temp_c": "about -200°C at the cloud tops",
                 "color_kind": "ice", "fact": "It has the fastest winds in the solar system, clocked at over 2,000 km/h."},
-    "pluto": {"name": "Pluto", "kind": "dwarf planet", "texture": None, "radius_km": 1188, "day_hours": 153.3,
+    "pluto": {"name": "Pluto", "kind": "dwarf planet", "texture": "2k_pluto.jpg", "radius_km": 1188, "day_hours": 153.3,
               "year_days": 90560, "distance_million_km": 5906, "moons": 5, "temp_c": "about -225°C",
               "color_kind": "ice", "fact": "It was reclassified from a planet to a dwarf planet in 2006, and its year is 248 Earth years long."},
     "moon": {"name": "the Moon", "kind": "moon", "texture": "2k_moon.jpg", "radius_km": 1737, "day_hours": 655.7,

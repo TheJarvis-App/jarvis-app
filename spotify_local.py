@@ -66,8 +66,67 @@ def _mac_now() -> tuple:
         return "stopped", "", ""
 
 
+def mac_ready(wait: float = 25.0) -> None:
+    """macOS: Spotify open and answering its commands, opening it in the background if it's closed (a just-opened
+    Spotify takes a few seconds before it plays anything). Raises SpotifyLocalError if it doesn't come up."""
+    deadline = time.time() + wait
+    if not running():
+        subprocess.run(["open", "-g", "-a", "Spotify"], capture_output=True)   # -g: opens without taking the screen
+    while True:
+        try:
+            _osa("player state as text", timeout=4)
+            return
+        except (SpotifyLocalError, subprocess.SubprocessError):
+            if time.time() > deadline:
+                raise SpotifyLocalError("Spotify didn't open in time. Try again in a moment.")
+            time.sleep(0.5)
+
+
+def mac_play_uri(uri: str, title: str = "", position_seconds=None, wait: float = 25.0) -> str:
+    """macOS: the Spotify app on this Mac plays exactly `uri` (a track, or a playlist, album or artist from the start),
+    told directly by AppleScript, and the "Song by Artist" now playing is returned once Spotify reports it.
+
+    Spotify's Web API can accept a play command for this computer and then play nothing (seen 2026-10-24: "Julia"
+    accepted, nothing loaded); the app's own command doesn't go through Spotify's servers and starts at once. Spotify
+    is opened in the background first if it's closed, and the command is given again if the first one was too early.
+    Raises SpotifyLocalError if it doesn't start."""
+    if not IS_MAC or not installed():
+        raise SpotifyLocalError("Spotify isn't installed on this Mac.")
+    if not re.fullmatch(r"spotify:(track|album|playlist|artist|show|episode):[A-Za-z0-9]+", uri or ""):
+        raise SpotifyLocalError("That isn't something Spotify can play.")
+    deadline = time.time() + wait
+    mac_ready(wait)
+    before = _mac_now()[1]
+    is_track = uri.startswith("spotify:track:")
+    first = title.lower().split(" - ")[0].strip()
+    for attempt in range(3):
+        try:
+            _osa(f'play track "{uri}"')
+        except (SpotifyLocalError, subprocess.SubprocessError):
+            pass
+        for poll in range(15):
+            time.sleep(0.4)
+            state, url, name = _mac_now()
+            if state != "playing" or not url:
+                continue
+            # a track: that very one (or Spotify's own copy of it for this country, which has another link);
+            # a playlist, album or artist: playing, from something new or after a moment (an album picks up where
+            # it was last left, which can be the song that was already on)
+            if (url == uri or (first and name.lower().startswith(first))) if is_track else (url != before or poll >= 2 or attempt):
+                if position_seconds:
+                    try:
+                        _osa(f"set player position to {int(position_seconds)}")
+                    except (SpotifyLocalError, subprocess.SubprocessError):
+                        pass
+                return name
+        if time.time() > deadline:
+            break
+    raise SpotifyLocalError("I asked the Spotify app to play it, but it didn't start.")
+
+
 def _mac_bring_forward() -> bool:
     import AppKit
+    import screen_mac   # front_app / running_app: read fresh (AppKit's own lists never update in Jarvis's engine)
     if not running():
         subprocess.run(["open", "-a", "Spotify"], check=False)
         for _ in range(60):   # a cold start takes a few seconds, longer on a computer Jarvis's own AI is loading down
@@ -75,8 +134,12 @@ def _mac_bring_forward() -> bool:
             if running():
                 break
         time.sleep(4)         # let its window and Quick Search get ready
-    app = next((a for a in AppKit.NSWorkspace.sharedWorkspace().runningApplications()
-                if a.localizedName() == "Spotify"), None)
+    app = None
+    for _ in range(20):   # just launched: launch services may need a moment to list it
+        app = screen_mac.running_app("Spotify")
+        if app is not None:
+            break
+        time.sleep(0.25)
     if app is None:
         return False
     for attempt in range(2):   # activateWithOptions_ alone doesn't always win focus from a background process
@@ -84,8 +147,7 @@ def _mac_bring_forward() -> bool:
          else subprocess.run(["open", "-a", "Spotify"], check=False))
         for _ in range(40):
             time.sleep(0.15)
-            front = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
-            if front is not None and front.localizedName() == "Spotify":
+            if screen_mac.front_name() == "Spotify":
                 break
         else:
             continue
@@ -792,6 +854,79 @@ def visible_steps(query: str) -> list:
     if screen_vision.available():
         return _visible_steps_by_sight(query)
     return _visible_steps_by_shortcut(query)
+
+
+def open_uri(uri: str) -> None:
+    """Shows a spotify: address (a playlist, an album, the Liked Songs page) in the Spotify app."""
+    if IS_MAC:
+        subprocess.run(["open", uri], check=False, timeout=10)
+    elif IS_WIN:
+        os.startfile(uri)   # type: ignore[attr-defined]
+
+
+def exact_steps(find, confirm, start=None) -> list:
+    """Take control of Spotify without reading the screen, for when Jarvis can look things up in Spotify (the user's
+    Spotify keys): each step is visible in the app, and none of them is a guess.
+
+      find()        -> (uri, label): the exact playlist, album, artist or song (raises SpotifyLocalError if it isn't found)
+      confirm(uri)  -> True when Spotify reports that very thing playing, False when something else is, None if unknown
+      start(uri)    -> starts it through Spotify itself; on a Mac the app's own AppleScript command is used first
+
+    Spotify comes to the front, opens the playlist's (album's, song's) page so you see where it is, and plays it;
+    "done" is said only when Spotify confirms that exact thing is playing."""
+    state = {}
+
+    def open_spotify():
+        if not installed():
+            raise SpotifyLocalError("Spotify isn't installed on this computer.")
+        state["before"] = _mac_now()[1] if IS_MAC else _win_title()
+        if not (_mac_bring_forward() if IS_MAC else _win_bring_forward()):
+            raise SpotifyLocalError("I couldn't bring Spotify to the front, so I stopped before touching anything.")
+
+    def find_it():
+        state["uri"], state["label"] = find()
+
+    def show_it():
+        uri = state["uri"]
+        if not uri.startswith("spotify:"):
+            return
+        open_uri(uri)
+        time.sleep(2.0)   # its page opens in the app, in view
+
+    def play_it():
+        uri = state["uri"]
+        started = False
+        if IS_MAC and uri.split(":")[1] in ("playlist", "album", "artist", "track", "episode", "show"):
+            try:   # (the liked songs can't be started this way: given their address, the app keeps playing what it was)
+                _osa(f'play track "{uri}"')
+                started = True
+            except Exception as e:
+                print(f"Spotify's play command didn't take {uri}: {e!r}", flush=True)
+        if not started:
+            if start is None:
+                raise SpotifyLocalError(f"I opened {state['label']} in Spotify but couldn't start it: press play there.")
+            start(uri)
+        other = ""
+        for _ in range(PLAYBACK_WAIT_STEPS):
+            time.sleep(PLAYBACK_WAIT_INTERVAL)
+            playing, name = now_playing()
+            if not playing:
+                continue
+            sure = confirm(uri)
+            if sure is True or (sure is None and (_mac_now()[1] if IS_MAC else _win_title()) != state.get("before")):
+                return f"Playing {state['label']} on Spotify" + (f" (now: {name})." if name else ".")
+            if sure is False:   # Spotify may still report the last thing for a moment: only a lasting mismatch counts
+                other = name or "something else"
+        if other:
+            raise SpotifyLocalError(f"Spotify is playing {other}, not {state['label']}, so I'm not calling it done — "
+                                    "please check what's playing.")
+        raise SpotifyLocalError(f"I opened {state['label']} in Spotify, but it didn't start playing. It's on the screen: "
+                                "press play there.")
+
+    return [("Opening Spotify", open_spotify),
+            ("Finding it in your Spotify", find_it),
+            ("Opening it in Spotify", show_it),
+            ("Playing it", play_it)]
 
 
 def _visible_steps_by_sight(query: str) -> list:

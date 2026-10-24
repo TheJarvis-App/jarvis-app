@@ -28,6 +28,7 @@ import subprocess
 import threading
 import time
 import traceback
+import uuid
 import webbrowser
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -92,9 +93,13 @@ import functions
 import graphs
 import images
 import planets
+import projector
+import quick_keys
 import worldclock
 import coder
+import code_chat
 import code_destinations
+import code_run
 import web_search
 import whatsapp
 import phone_control
@@ -126,6 +131,9 @@ if LLM_BACKEND == "local":
     LLM_BACKEND = "ollama"
 if not GROQ_KEY and LLM_BACKEND in ("auto", "groq"):
     LLM_BACKEND = "ollama"   # no online AI key: the AI on this computer is the AI (no account or key needed)
+# Online AI only: nothing heavy runs on this computer (no local AI, no local speech models), so Jarvis stays
+# under 2 GB of memory. The local models take 3-8 GB, more than an 8 GB Mac can spare.
+LIGHT = LLM_BACKEND == "groq"
 
 # How this backend was started. The installed app (and `npm start`) runs it as a child of the window, which picks a
 # free port and a secret for the window connection, and restarts the backend when it exits with RESTART_EXIT_CODE.
@@ -244,6 +252,8 @@ def time_greeting() -> str:
 
 
 window_visible = True   # the window tells us when it's closed (hidden) or shown again
+quick_visible = False   # the Quick Access bar (quick.js) is open
+listen_now = threading.Event()   # the Quick Access bar's microphone: listen for a request now, asleep or not
 awake = False
 ui_launched = False
 youtube_active = False  # True once Jarvis started a YouTube video; routes pause/resume there.
@@ -645,7 +655,7 @@ async def handle_client(websocket):
             elif data.get("type") == "text":  # something typed in the window instead of spoken
                 typed = " ".join(str(data.get("text", "")).split())[:500]
                 if typed:
-                    typed_inputs.put(typed)
+                    typed_inputs.put(QuickTyped(typed) if data.get("quick") else typed)
                     interrupt_speech.set()  # if Jarvis is talking, stop so he can answer this
             elif data.get("type") == "image":  # a picture attached in the window, with an optional caption/instruction
                 name = str(data.get("name", ""))[:120]
@@ -677,6 +687,15 @@ async def handle_client(websocket):
                 refresh_weather_window(str(data.get("city") or "")[:80], refresh=data.get("refresh") is not False)
             elif data.get("type") == "window_visibility":
                 set_window_visible(data.get("visible") is not False)
+            elif data.get("type") == "quick_visibility":   # the Quick Access bar (quick/panel.js)
+                set_quick_visible(data.get("visible") is True)
+            elif data.get("type") == "quick_listen":
+                quick_listen()
+            elif data.get("type") == "quick_cancel":
+                quick_cancel()
+            elif data.get("type") == "quick_menubar":   # Jarvis Top, inside the menu bar: where the app's menus are
+                layout = await asyncio.get_running_loop().run_in_executor(None, menubar_layout)
+                await websocket.send(json.dumps({"type": "quick_menubar", "data": layout}))
             elif data.get("type") == "control_answer":
                 answer_control_question(str(data.get("id", "")), data.get("allow") is True)
             elif data.get("type") == "control_command":
@@ -711,6 +730,8 @@ async def handle_client(websocket):
                         mic_calibrated = False   # a different microphone has a different noise level
                     settings_changed.set()
                     await websocket.send(json.dumps({"type": "settings_saved", **result}))
+                    if any(k.startswith("JARVIS_QUICK") for k in result["saved"]):
+                        apply_quick_settings()
                     if result["restart"]:
                         request_restart(", ".join(result["saved"]))
             elif data.get("type") == "alert_dismissed":
@@ -1130,7 +1151,11 @@ def weather_loop():
 # computer writes the code. Groq's free plan allows 8,000 tokens a minute: a wait for that limit is shown, not hidden.
 DEFAULT_CODE_MODEL = "openai/gpt-oss-120b"
 CODE_MODEL = (os.getenv("CODE_MODEL") or "").strip().strip("\"'") or DEFAULT_CODE_MODEL
-code_state = {"open": False, "job": None, "project": None, "busy": False, "at": 0.0}
+code_state = {"open": False, "job": None, "project": None, "busy": False, "at": 0.0, "thread": "", "stop": None, "status": ""}
+# Groq's free plan refuses any single request over 8,000 tokens (question and answer together) for the coding model, so the
+# engine sizes every request to fit. CODE_REQUEST_TOKENS in .env sets another limit (0 = none); a limit the server
+# announces in a refusal replaces it from then on.
+code_request_limit = {"tokens": int(os.getenv("CODE_REQUEST_TOKENS") or (8000 if GROQ_KEY else 0) or 0)}
 _code_lock = threading.Lock()
 _code_model_refused = False   # the chosen model isn't offered to this key any more: the chat model writes the code instead
 
@@ -1142,66 +1167,297 @@ def code_model_name() -> str:
     return GROQ_MODEL if _code_model_refused else CODE_MODEL
 
 
-def _code_chat(messages: list, max_tokens: int) -> str:
+def _code_chat(messages: list, max_tokens: int, model: str = "") -> str:
     """The coding engine's question to the AI: a longer answer than chat ever needs, patient with the rate limit."""
     global _code_model_refused
     if not GROQ_KEY:   # no online AI at all: the one on this computer
         return groq_chat(model=GROQ_MODEL, messages=messages, max_tokens=max_tokens).choices[0].message.content or ""
     kwargs = {"messages": messages, "max_tokens": max_tokens}
     for attempt in range(5):
-        model = code_model_name()
-        if "gpt-oss" in model:   # its thinking counts against the answer's length: little for a plan, more for code
+        chosen = model or code_model_name()
+        if "gpt-oss" in chosen:   # its thinking counts against the answer's length: little for a plan, more for code
             kwargs["reasoning_effort"] = "low" if max_tokens <= 4000 else "medium"
         else:
             kwargs.pop("reasoning_effort", None)
         try:
             return groq_client.with_options(timeout=150, max_retries=0).chat.completions.create(   # no hidden retries: waits are done below, in the open
-                model=model, **kwargs).choices[0].message.content or ""
+                model=chosen, **kwargs).choices[0].message.content or ""
         except Exception as e:
             text = str(e)
-            if not _code_model_refused and model != GROQ_MODEL and re.search(r"model.{0,40}(?:not found|does not exist|decommissioned|no longer)|404", text, re.I):
-                print(f"The coding model {model} isn't available to this key ({text[:120]}); using {GROQ_MODEL}.", flush=True)
+            if not model and not _code_model_refused and chosen != GROQ_MODEL and re.search(r"model.{0,40}(?:not found|does not exist|decommissioned|no longer)|404", text, re.I):
+                print(f"The coding model {chosen} isn't available to this key ({text[:120]}); using {GROQ_MODEL}.", flush=True)
                 _code_model_refused = True
                 continue
-            if re.search(r"too large|413|max_tokens|maximum", text, re.I) and kwargs["max_tokens"] > 3000:
+            if re.search(r"request too large|\b413\b", text, re.I):   # over the per-request limit: learn it, and say it plainly
+                found = re.search(r"Limit (\d+)", text)
+                if found and not model:
+                    code_request_limit["tokens"] = int(found.group(1))
+                print(f"Coding: a request was over the AI plan's per-request limit: {text[:240]}", flush=True)
+                raise coder.CodeError("That was more than the free AI plan accepts in one request. I've adjusted to its limit: ask again, "
+                                      "and for a big change, one part at a time.")
+            if re.search(r"max_tokens|maximum", text, re.I) and kwargs["max_tokens"] > 3000:
                 kwargs["max_tokens"] //= 2      # this account's limit is smaller than what was asked for: ask for less
                 continue
-            wait = re.search(r"try again in (?:(\d+)m)?([\d.]+)\s*(ms|s)", text, re.I)
-            if attempt < 4 and re.search(r"rate.?limit|429", text, re.I):
-                seconds = (int(wait.group(1) or 0) * 60 + float(wait.group(2)) * (0.001 if wait.group(3).lower() == "ms" else 1)) if wait else 20
-                if seconds <= 90:
-                    job = code_state["job"]
-                    if job and code_state["busy"]:   # say why nothing is moving
-                        job.step = f"Waiting {int(seconds) + 1} seconds for the AI's free-plan limit"
-                        send_ui_update_once({"type": "coding", "data": job.public()})
-                    time.sleep(seconds + 1)
+            wait = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)\s*(ms|s))?", text, re.I)
+            if re.search(r"rate.?limit|429", text, re.I):
+                print(f"Coding: Groq's limit: {text[:300]}", flush=True)
+                seconds = ((int(wait.group(1) or 0) * 3600 + int(wait.group(2) or 0) * 60
+                            + float(wait.group(3) or 0) * (0.001 if (wait.group(4) or "s").lower() == "ms" else 1)) if wait and any(wait.groups()) else 20)
+                if seconds > 180 or attempt >= 4:   # a daily allowance, not a minute's: say so, and when it frees up
+                    raise coder.CodeError(f"Groq's free plan has run out for now: its limit frees up in about {max(1, round(seconds / 60))} minute"
+                                          f"{'s' if round(seconds / 60) != 1 else ''}. Ask again then.")
+                if seconds <= 180:
+                    _code_status(f"Waiting {int(seconds) + 1} seconds for the AI's free-plan limit")
+                    stop = code_state["stop"]
+                    if stop is not None and stop.wait(seconds + 1):
+                        raise coder.Stopped()
+                    elif stop is None:
+                        time.sleep(seconds + 1)
                     continue
             raise
     raise coder.CodeError("The AI kept refusing that request.")
 
 
+def _code_status(step: str) -> None:
+    """What the window says Jarvis is doing right now (a wait for the rate limit, thinking about a question)."""
+    code_state["status"] = step
+    job = code_state["job"]
+    if job and code_state["busy"] and job.phase not in ("done", "failed", "stopped"):
+        job.step = step
+        _code_progress(job)
+    else:
+        send_ui_update_once({"type": "coding_status", "data": {"busy": code_state["busy"], "step": step, "thread": code_state["thread"]}})
+
+
 def _code_progress(job) -> None:
     code_state.update(job=job, at=time.time())
-    send_ui_update_once({"type": "coding", "data": job.public()})
+    data = job.public()
+    if job.thread:
+        thread = code_chat.load(job.thread)
+        if thread and code_chat.update(thread, "w-" + job.id, job=_job_card(data)) is None:
+            pass
+    send_ui_update_once({"type": "coding", "data": data, "thread": job.thread})
+
+
+def _job_card(data: dict) -> dict:
+    """What a work message in the chat keeps of a job (the window draws the card from it)."""
+    keep = ("id", "action", "phase", "step", "name", "language", "path", "summary", "error", "repairs", "updated", "created", "destination",
+            "request", "run", "test", "needs")
+    card = {k: data.get(k) for k in keep}
+    card["files"] = [{k: f.get(k) for k in ("path", "status", "lines", "error", "purpose")} for f in data.get("files") or []]
+    card["checks"] = {"ok": sum(c["status"] == "ok" for c in data.get("checks") or []), "failed": sum(c["status"] == "failed" for c in data.get("checks") or []),
+                      "skipped": sum(c["status"] == "skipped" for c in data.get("checks") or [])}
+    card["changed"] = data.get("changed") or []
+    return card
 
 
 def code_engine():
-    return coder.Engine(_code_chat, _code_progress, model=code_model_name())
+    return coder.Engine(_code_chat, _code_progress, model=code_model_name(), stop=code_state["stop"],
+                        budget=lambda: code_request_limit["tokens"] or None, environment=code_run.installed_tools())
+
+
+def project_by_path(path: str):
+    """The newest history record of the project in that folder (each change adds one), if the folder still exists."""
+    if not path or not os.path.isdir(path):
+        return None
+    return next((p for p in coder.load_history() if p.get("path") == path), None)
 
 
 def current_code_project():
-    """The project follow-ups mean: the one just made or chosen, else the last one that still exists on disk."""
+    """The project follow-ups mean: the open chat's project, else the one just made or chosen, else the last one on disk."""
+    thread = code_chat.load(code_state["thread"]) if code_state["thread"] else None
+    if thread and thread.get("path"):
+        found = project_by_path(thread["path"])
+        if found:
+            return found
     project = code_state["project"]
     return project if project and os.path.isdir(project.get("path", "")) else coder.latest_project()
 
 
 def coding_info() -> dict:
-    """What the Coding Mode window needs to draw itself: languages, destinations (and why one can't be used), recent work."""
-    return {"languages": [{"key": l.key, "name": l.name} for l in coder.LANGUAGES.values()],
-            "destinations": code_destinations.describe(), "history": coder.load_history()[:12], "model": code_model_name(),
-            "projectsDir": coder.default_projects_dir(), "busy": code_state["busy"], "drive": code_destinations.drive_status(),
+    """What the Coding Mode window needs to draw itself: destinations (and why one can't be used), the model, recent work."""
+    return {"destinations": code_destinations.describe(), "model": code_model_name(), "projectsDir": coder.default_projects_dir(),
+            "busy": code_state["busy"], "drive": code_destinations.drive_status(), "free": bool(GROQ_KEY),
             "sandbox": sys.platform == "darwin" and os.path.exists("/usr/bin/sandbox-exec"),   # whether tests can be fenced in here
-            "job": code_state["job"].public() if code_state["job"] else None}
+            "job": code_state["job"].public() if code_state["job"] else None, "thread": code_state["thread"]}
+
+
+def code_threads_list() -> list:
+    """The window's sidebar: every chat, and the projects made before chats existed (opening one starts its chat).
+    Each carries the key it is hidden by (its chat id, or "path:<folder>"), whether it's hidden, and when it began."""
+    hidden = set(code_chat.prefs()["hidden"])
+    chats = code_chat.threads()
+    history = coder.load_history()
+    by_path = {}
+    for p in history:
+        by_path.setdefault(p.get("path"), p)
+    listed = []
+    for t in chats:
+        project = by_path.get(t.get("path")) if t.get("path") else None
+        listed.append({"id": t["id"], "key": t["id"], "hidden": t["id"] in hidden, "created": t.get("created", 0),
+                       "title": t.get("title") or (project or {}).get("name") or "New project", "updated": t.get("updated", 0),
+                       "language": (project or {}).get("language", ""), "name": (project or {}).get("name", ""), "path": t.get("path", ""),
+                       "exists": bool(project), "phase": (project or {}).get("phase", ""), "count": t.get("count", 0)})
+    chatted = {t.get("path") for t in chats}
+    for path, p in by_path.items():
+        if path and path not in chatted and os.path.isdir(path):
+            listed.append({"id": "", "key": "path:" + path, "hidden": "path:" + path in hidden, "created": p.get("created", 0),
+                           "project": p["id"], "title": p.get("name") or os.path.basename(path), "updated": p.get("updated") or p.get("created", 0),
+                           "language": p.get("language", ""), "name": p.get("name", ""), "path": path, "exists": True, "phase": p.get("phase", ""), "count": 0})
+    return sorted(listed, key=lambda t: t.get("updated") or 0, reverse=True)[:200]
+
+
+def code_tree(project) -> list:
+    """The project's real files, as the explorer shows them, marked new or changed by the last piece of work."""
+    if not project or not os.path.isdir(project.get("path", "")):
+        return []
+    marks = {f["path"]: f["status"] for f in project.get("files") or [] if f.get("status") in ("written", "changed")}
+    snapshot = coder.read_project(project["path"])
+    out = []
+    for rel in snapshot["tree"]:
+        try:
+            size = os.path.getsize(os.path.join(project["path"], rel))
+        except OSError:
+            size = 0
+        out.append({"path": rel, "size": size, "mark": {"written": "new", "changed": "changed"}.get(marks.get(rel, ""), "")})
+    for folder, dirs, files in os.walk(project["path"]):   # empty folders the user made show too
+        dirs[:] = [d for d in dirs if d not in coder.SKIP_DIRS and not d.startswith(".")]
+        if not files and not dirs and folder != project["path"]:
+            out.append({"path": os.path.relpath(folder, project["path"]).replace(os.sep, "/") + "/", "size": 0, "mark": "", "folder": True})
+    return out
+
+
+def code_project_payload(project) -> dict:
+    if not project:
+        return None
+    return {**project, "tree": code_tree(project), "guide": code_run.guide(project["path"], project.get("run", ""))}
+
+
+FINAL_PHASES = ("done", "failed", "stopped", "interrupted")
+
+
+def interrupted_card(thread):
+    """The chat's last build card if its work never finished (Jarvis was closed meanwhile), else None. It is marked so,
+    once, with a note saying what was written and how to finish it."""
+    if not thread:
+        return None
+    card = next((m for m in reversed(thread["messages"]) if m.get("kind") == "work"), None)
+    job = (card or {}).get("job") or {}
+    running = code_state["busy"] and code_state["job"] and "w-" + code_state["job"].id == (card or {}).get("id")
+    if not card or job.get("phase") in FINAL_PHASES or running:
+        return card if card and job.get("phase") == "interrupted" else None
+    written = [f for f in job.get("files") or [] if f.get("status") in ("written", "changed")]
+    job.update(phase="interrupted", step="")
+    code_chat.update(thread, card["id"], job=job)
+    if job.get("action") == "create" and job.get("path"):
+        thread.setdefault("path", job["path"])
+        if not thread.get("path"):
+            thread["path"] = job["path"]
+        code_chat.save(thread)
+        code_chat.add(thread, "jarvis", f"Jarvis was closed while this was being built: {len(written)} of {len(job.get('files') or [])} files had been "
+                      f"written. Say **continue** and I'll write the rest and check it.", "text")
+    else:
+        code_chat.add(thread, "jarvis", "Jarvis was closed while this was being changed, so the change may be incomplete. "
+                      "Ask for it again to be sure it's all there.", "text")
+    return card
+
+
+def send_code_thread(thread) -> None:
+    """The whole chat and its project, for the window to draw (on opening, switching, or after a file operation)."""
+    interrupted_card(thread)
+    project = project_by_path(thread.get("path", "")) if thread else None
+    send_ui_update_once({"type": "coding_thread", "data": {
+        "thread": thread, "project": code_project_payload(project), "busy": code_state["busy"],
+        "status": code_state["status"] if code_state["busy"] else "", "job": code_state["job"].public() if code_state["busy"] and code_state["job"] else None}})
+
+
+def send_code_threads() -> None:
+    send_ui_update_once({"type": "coding_threads", "data": code_threads_list(), "prefs": code_chat.prefs()})
+
+
+def project_folder_jarvis_made(path: str):
+    """The folder, if it is one Jarvis itself created for a project (it is in the history) and is safe to move to the
+    Trash: never the projects folder itself, a home, Desktop or Documents folder, a folder holding other projects, or
+    Jarvis's own folder. Else None."""
+    if not path or not os.path.isdir(path):
+        return None
+    real = os.path.realpath(path)
+    recorded = {os.path.realpath(p["path"]) for p in coder.load_history() if p.get("path")}
+    home = os.path.realpath(os.path.expanduser("~"))
+    protected = {home, os.path.realpath(coder.default_projects_dir()), os.path.realpath(paths.DATA_DIR), os.path.realpath(os.path.dirname(os.path.abspath(__file__))),
+                 *(os.path.join(home, d) for d in ("Desktop", "Documents", "Downloads", "Library", "Applications", "Pictures", "Music", "Movies"))}
+    if real not in recorded or real in protected or real.count(os.sep) < 3:
+        return None
+    if any(r != real and r.startswith(real + os.sep) for r in recorded):   # it holds other projects
+        return None
+    return real
+
+
+def coding_remove(data: dict) -> None:
+    """Remove a project from Coding Mode's list (its chat is set aside, recoverable; its files stay where they are),
+    and only when asked separately, move its folder to the Trash. Never while Jarvis is working on it."""
+    key = str(data.get("key") or "")
+    thread = code_chat.load(key) if key and not key.startswith("path:") else None
+    path = (thread or {}).get("path", "") if thread else key[5:] if key.startswith("path:") else ""
+    title = (thread or {}).get("title") or os.path.basename(path) or "the project"
+    note = lambda message, ok: send_ui_update_once({"type": "coding_removed", "data": {"key": key, "ok": ok, "message": message}})
+    if not thread and not path:
+        return note("That project isn't in the list any more.", False)
+    if code_state["busy"] and ((code_state["job"] and path and code_state["job"].path == path) or code_state["thread"] == key):
+        return note(f"Jarvis is working on {title} right now. Stop it first, then remove it.", False)
+    trash = data.get("files") is True
+    folder = project_folder_jarvis_made(path) if trash else None
+    gone = bool(path) and not os.path.isdir(path)
+    if gone:
+        trash = False   # nothing on disk to move: the entry still goes
+    if trash and not folder:
+        return note(f"I won't move {path} to the Trash: it isn't a project folder Jarvis made. It's still in the list.", False)
+    if trash:
+        try:
+            code_run.move_to_trash(folder)
+        except Exception as e:
+            code_chat.audit("trash_failed", path=folder, error=type(e).__name__)
+            return note(f"I couldn't move the folder to the Trash ({e}). Nothing was removed.", False)
+        code_chat.audit("trash", path=folder)
+    chats = [thread["id"]] if thread else []
+    if trash or (path and not any(t.get("path") == path for t in code_chat.threads() if t["id"] not in chats)):
+        chats += [t["id"] for t in code_chat.threads() if path and t.get("path") == path and t["id"] not in chats]
+        coder.forget_project(path)   # the history records go to the removed list: recoverable
+    for chat_id in chats:
+        code_chat.set_aside(chat_id)
+    code_chat.set_hidden(key, False)
+    code_chat.audit("remove", title=title, path=path, files="trash" if trash else "kept")
+    if code_state["thread"] in chats or not chats and code_state["project"] and code_state["project"].get("path") == path:
+        code_state.update(thread="", project=None)
+        send_code_thread(None)
+    send_code_threads()
+    where = (f" Its folder is in the Trash, where you can put it back." if trash else
+             " Its folder was already gone." if gone else f" Its files are still in {path}." if path else "")
+    note(f"Removed {title} from Coding Mode.{where}", True)
+
+
+def _thread_say(thread, text: str, kind: str = "text", **extra) -> dict:
+    """Jarvis's message in a chat, saved and shown."""
+    message = code_chat.add(thread, "jarvis", text, kind, **extra)
+    send_ui_update_once({"type": "coding_message", "thread": thread["id"], "data": message})
+    return message
+
+
+def _thread_for(action: str, request: str, thread_id: str = "", said: bool = False):
+    """The chat this work belongs to. From the window it is the open one (the user's message is already in it); from
+    voice it is the project's chat (or a new one), and what was said is added to it."""
+    thread = code_chat.load(thread_id) if thread_id else None
+    if thread is None:
+        project = current_code_project() if action == "change" else None
+        if project:
+            thread = next((code_chat.load(t["id"]) for t in code_chat.threads() if t.get("path") == project["path"]), None)
+        thread = thread or code_chat.new_thread(path=project["path"] if project else "")
+        said = False
+    if not said:
+        message = code_chat.add(thread, "user", request, via="voice" if not thread_id else "window")
+        send_ui_update_once({"type": "coding_message", "thread": thread["id"], "data": message})
+    code_state["thread"] = thread["id"]
+    return thread
 
 
 def _deliver_code(job, destination: str) -> str:
@@ -1216,18 +1472,24 @@ def _deliver_code(job, destination: str) -> str:
     return result["message"]
 
 
-def _run_code_job(job, destination: str, language: str = "", name: str = "", location: str = "", project: dict = None, announce: bool = True) -> str:
+def _run_code_job(job, destination: str, language: str = "", name: str = "", location: str = "", project: dict = None, announce: bool = True,
+                  history: str = "") -> str:
     try:
         engine = code_engine()
         if job.action == "change":
             before = (project or {}).get("tests") or {}
-            engine.change(job, project, evidence=before.get("output", "") if before.get("status") == "failed" else "")
+            failed_checks = "\n\n".join(f"{c['file']} ({c['tool']}):\n{c['output']}" for c in (project or {}).get("checks") or [] if c.get("status") == "failed")
+            evidence = (before.get("output", "") if before.get("status") == "failed" else "") + ("\n\nChecks that failed:\n" + failed_checks if failed_checks else "")
+            plan = code_run.guide(project["path"], project.get("run", ""))
+            how = (plan.get("launch") or {}).get("command") or (plan.get("launch") or {}).get("path") or ""
+            facts = f"Kind: {plan.get('stack') or 'unknown'}" + (f"; it starts with: {how}" if how else "")
+            engine.change(job, project, evidence=evidence.strip(), history=history, facts=facts)
             if job.phase == "done" and before.get("status") in ("passed", "failed"):
                 # its tests were run before at the user's request: run them again on the changed code, and say the real result
                 job.tests = coder.run_tests(job.path, job.test)
                 coder.save_project_record(job.public())
         else:
-            engine.create(job, language=language, name=name, location=location)
+            engine.create(job, language=language, name=name, location=location, history=history)
         reply = coder.result_sentence(job)
         if job.phase == "done":
             code_state["project"] = job.public()
@@ -1244,39 +1506,112 @@ def _run_code_job(job, destination: str, language: str = "", name: str = "", loc
         job.phase, job.error = "failed", coder.friendly_error(e)
         reply = job.error
     finally:
-        code_state["busy"] = False
+        code_state.update(busy=False, stop=None, status="")
         _code_progress(job)
+    if job.thread:
+        thread = code_chat.load(job.thread)
+        if thread:
+            if job.path and job.phase in ("done", "stopped") and thread.get("path") != job.path:
+                thread["path"] = job.path
+                code_chat.save(thread)
+            _thread_say(thread, reply, "error" if job.phase == "failed" else "result", job_id=job.id, phase=job.phase)
+            send_code_thread(thread)
+            send_code_threads()
     if announce:
         broadcast("ai", reply)
         speak(reply)
     return reply
 
 
-def start_code_job(action: str, request: str, language: str = "", destination: str = "", name: str = "", location: str = "", wait: bool = False) -> str:
-    """Begin writing (or changing) code. In the window's own time unless wait: then the result comes back as the answer."""
+def _claim_code() -> bool:
+    """One piece of coding work at a time: two at once would write the same files over each other."""
     with _code_lock:
         if code_state["busy"]:
-            return f"I'm still working on {code_state['job'].name or 'the last request'}. One at a time: ask again when it's done."
-        project = current_code_project() if action == "change" else None
+            return False
+        code_state.update(busy=True, stop=threading.Event(), status="")
+        return True
+
+
+def _release_code() -> None:
+    code_state.update(busy=False, stop=None, status="")
+
+
+def start_code_job(action: str, request: str, language: str = "", destination: str = "", name: str = "", location: str = "", wait: bool = False,
+                   thread_id: str = "", claimed: bool = False) -> str:
+    """Begin writing (or changing) code. In the window's own time unless wait: then the result comes back as the answer.
+    thread_id: the chat it was asked in (the window); claimed: that chat already holds the one-at-a-time slot."""
+    if not claimed and not _claim_code():
+        return f"I'm still working on {getattr(code_state['job'], 'name', '') or 'the last request'}. One at a time: ask again when it's done, or press Stop."
+    try:
+        project = (project_by_path((code_chat.load(thread_id) or {}).get("path", "")) if thread_id else None) or \
+            (current_code_project() if action == "change" else None)
         if action == "change" and not project:
+            _release_code()
             return "There's no project to change yet. Tell me what to build first."
         if destination and destination not in code_destinations.DESTINATIONS:
             destination = ""
         if location:
             location = os.path.abspath(os.path.expanduser(location))
             if not os.path.isdir(location):
+                _release_code()
                 return f"I couldn't find the folder {location}. Choose a folder that exists, or leave it empty."
-        job = coder.Job(id=datetime.now().strftime("%Y%m%d-%H%M%S"), request=request.strip(), action=action, destination=destination,
-                        created=time.time(), model=code_model_name())
-        code_state.update(busy=True, job=job, at=time.time())
+        thread = _thread_for(action, request, thread_id, said=bool(thread_id))
+        history = code_chat.history({"messages": thread["messages"][:-1]})   # what came before this request
+        job = coder.Job(id=new_job_id(), request=request.strip(), action=action, destination=destination,
+                        created=time.time(), model=code_model_name(), thread=thread["id"])
+        code_state.update(job=job, at=time.time())
+        code_chat.add(thread, "jarvis", "", "work", id="w-" + job.id, job=_job_card(job.public()))
+    except Exception:
+        _release_code()
+        raise
     if ws_loop and connected_clients:
         send_ui_update_once({"type": "coding_open", "data": coding_info()})
-    kwargs = {"language": language, "name": name, "location": location, "project": project}
+        send_code_thread(thread)
+    kwargs = {"language": language, "name": name, "location": location, "project": project, "history": history}
     if wait or not (ws_loop and connected_clients):
         return _run_code_job(job, destination, announce=False, **kwargs)
-    threading.Thread(target=_run_code_job, args=(job, destination), kwargs=kwargs, daemon=True, name="coding").start()
+    threading.Thread(target=_run_code_job, args=(job, destination), kwargs={**kwargs, "announce": not thread_id}, daemon=True, name="coding").start()
     what = f"changing {project['name']}" if action == "change" else "writing it"
     return f"On it: I'm {what} now. You can watch in the coding window; I'll tell you when it's done."
+
+
+def new_job_id() -> str:
+    """Unique even for two jobs in the same second (a chat's work cards are found by it)."""
+    return datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
+
+
+def start_resume_job(thread, card: dict) -> str:
+    """Finish an interrupted build in its own chat (the one-at-a-time slot is already held)."""
+    job = coder.Job(id=new_job_id(), request=card.get("request") or "", action="create", created=time.time(),
+                    model=code_model_name(), thread=thread["id"], path=card.get("path") or "", name=card.get("name") or "",
+                    language=card.get("language") or "", summary=card.get("summary") or "", run=card.get("run") or "",
+                    test=card.get("test") or "", needs=card.get("needs") or "",
+                    files=[{"path": f["path"], "purpose": f.get("purpose") or "", "status": "planned", "lines": 0} for f in card.get("files") or []])
+    code_state.update(job=job, at=time.time())
+    code_chat.add(thread, "jarvis", "", "work", id="w-" + job.id, job=_job_card(job.public()))
+    send_code_thread(thread)
+
+    def work():
+        try:
+            code_engine().resume(job)
+            reply = coder.result_sentence(job) + (f" It's in {job.path}." if job.phase == "done" else "")
+        except Exception as e:
+            traceback.print_exc()
+            job.phase, job.error = "failed", coder.friendly_error(e)
+            reply = job.error
+        finally:
+            code_state.update(busy=False, stop=None, status="")
+            _code_progress(job)
+        fresh = code_chat.load(thread["id"])
+        if fresh:
+            _thread_say(fresh, reply, "error" if job.phase == "failed" else "result", job_id=job.id, phase=job.phase)
+            send_code_thread(fresh)
+            send_code_threads()
+    if ws_loop and connected_clients:
+        threading.Thread(target=work, daemon=True, name="coding-resume").start()
+    else:
+        work()
+    return "On it: finishing the interrupted build."
 
 
 def _tests_reply(result: dict, name: str) -> str:
@@ -1290,17 +1625,18 @@ def _tests_reply(result: dict, name: str) -> str:
     return f"The tests of {name} failed{where}. The last line says: {tail} The full output is in the coding window; say \"fix the errors\" and I'll work on them."
 
 
-def run_code_tests(announce: bool = False) -> str:
+def run_code_tests(announce: bool = False, project: dict = None) -> str:
     """Run the current project's own tests. Only ever on an explicit request: this is the one place its code is executed."""
-    project = current_code_project()
+    project = project or current_code_project()
     if not project:
         return "There's no project yet whose tests I could run."
-    job = code_state["job"] if code_state["job"] and code_state["job"].path == project["path"] else coder.Job(
-        id=project["id"], request=project.get("request", ""), **{k: project.get(k, "") for k in ("name", "language", "path", "summary", "run", "test", "needs")},
+    job = code_state["job"] if code_state["job"] and code_state["job"].path == project["path"] and code_state["job"].phase == "done" else coder.Job(
+        id=project["id"], request=project.get("request", ""), **{k: project.get(k, "") for k in ("name", "language", "path", "summary", "run", "test", "needs", "thread")},
         files=project.get("files", []), checks=project.get("checks", []), phase="done")
     job.tests = {"status": "running", "command": "", "output": ""}
     _code_progress(job)
     job.tests = coder.run_tests(project["path"], project.get("test", ""))
+    code_chat.audit("tests", project=project["path"], command=job.tests.get("command", ""), status=job.tests.get("status", ""))
     code_state["project"] = job.public()
     coder.save_project_record(job.public())
     _code_progress(job)
@@ -1329,7 +1665,7 @@ def handle_code_command(text: str):
         return "Okay, I closed Coding Mode." if window else None
     if action == "create":
         if code_state["busy"]:
-            return f"I'm still working on {code_state['job'].name or 'the last request'}. Ask again when it's done."
+            return f"I'm still working on {getattr(code_state['job'], 'name', '') or 'the last request'}. Ask again when it's done."
         return start_code_job("create", request["request"], request["language"] or "", request["destination"] or "")
     if action == "deliver":
         if not project:
@@ -1350,7 +1686,10 @@ def handle_code_command(text: str):
     if action == "continue":
         code_state["project"] = project
         if window:
-            send_ui_update_once({"type": "coding_open", "data": {**coding_info(), "project": project}})
+            thread = code_chat.for_path(project["path"]) or code_chat.new_thread(path=project["path"], title=project.get("name", ""))
+            code_state["thread"] = thread["id"]
+            send_ui_update_once({"type": "coding_open", "data": coding_info()})
+            send_code_thread(thread)
         return f"The last project is {project['name']}, in {project['path']}. Tell me what to change, or say \"run the tests\"."
     if action == "explain":
         try:
@@ -1382,37 +1721,295 @@ def is_code_request(text: str) -> bool:
                           r"game|api|tool|bot)\b", n)) and not coder._NOT_CODE.search(n)
 
 
+# ---------- the Coding Mode chat: one conversation per project ----------
+def _route_ask(prompt: str) -> str:
+    """The quick question that decides what a chat message wants: the small, fast model (a different daily allowance
+    from the one that writes code)."""
+    if GROQ_KEY:
+        reply = groq_client.with_options(timeout=30, max_retries=1).chat.completions.create(
+            model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}], max_tokens=400,
+            **({"reasoning_effort": "low"} if "gpt-oss" in GROQ_MODEL else {}))
+        return reply.choices[0].message.content or ""
+    return groq_chat(model=GROQ_MODEL, messages=[{"role": "user", "content": prompt}], max_tokens=200).choices[0].message.content or ""
+
+
+def _ask_to_run(thread, project) -> None:
+    """Running the project executes its code on this computer: the chat asks first, and says exactly what will happen."""
+    plan = code_run.guide(project["path"], project.get("run", ""))
+    how = plan.get("launch")
+    if not how:
+        _thread_say(thread, "I can't tell how this project starts from its files, so I won't guess a command. The **How to run** panel says what I "
+                            "found; ask me \"how do I run it?\" and I'll read the code and explain.", "text")
+        return
+    if how["type"] == "browser":
+        text = f"Open **{os.path.relpath(how['path'], project['path'])}** in your browser? Its scripts run there, like any web page."
+    else:
+        text = (f"Start **{project['name']}** on this computer? It opens {code_run.TERMINAL} and runs:\n\n```\n{how['command']}\n```\n\n"
+                + ("This first **downloads and installs its packages** from the internet. " if how.get("installs") else "")
+                + "Its code runs with your permissions (not in a sandbox); you'll see its output in that window and can stop it with Control + C.")
+    _thread_say(thread, text, "confirm", ask="run", answer="")
+
+
+def _code_answer(thread, project, text: str) -> None:
+    history = code_chat.history({"messages": thread["messages"][:-1]})
+    try:
+        if project:
+            _code_status("Reading the project")
+            facts = code_run.as_text(project["path"], code_run.guide(project["path"], project.get("run", "")))
+            answer = code_engine().explain(text, project, history=history, facts=facts)
+        else:
+            _code_status("Thinking")
+            answer = _code_chat([{"role": "system", "content": "You are Jarvis's coding assistant. Answer plainly, briefly and correctly; "
+                                  "explain any technical word the first time. Use Markdown. You can build projects when asked; you haven't built anything in this chat yet."},
+                                 {"role": "user", "content": (f"The conversation so far:\n{history}\n\n" if history else "") + text}], 2000).strip()
+        _thread_say(thread, answer or "I don't have an answer to that.", "text")
+    except coder.Stopped:
+        _thread_say(thread, "Stopped.", "text")
+    except Exception as e:
+        _thread_say(thread, coder.friendly_error(e) if not isinstance(e, coder.CodeError) else str(e), "error")
+
+
+def coding_send(thread_id: str, text: str) -> None:
+    """A message typed in the Coding Mode chat: saved, understood, and acted on. Runs on its own thread."""
+    text = (text or "").strip()[:6000]
+    if not text:
+        return
+    if not _claim_code():
+        send_ui_update_once({"type": "coding_note", "message": "I'm still working on the last request. Wait for it, or press Stop."})
+        return
+    handed_off = False
+    try:
+        thread = code_chat.load(thread_id) if thread_id else None
+        thread = thread or code_chat.new_thread()
+        code_state["thread"] = thread["id"]
+        message = code_chat.add(thread, "user", text, via="window")
+        send_ui_update_once({"type": "coding_message", "thread": thread["id"], "data": message})
+        send_code_threads()
+        project = project_by_path(thread.get("path", ""))
+        card = interrupted_card(thread)
+        if card and card["job"].get("action") == "create" and re.match(r"^\W*(?:please\s+)?(?:continue|resume|keep going|go on|finish(?: it)?|carry on)\b", text, re.I):
+            handed_off = True
+            return start_resume_job(thread, card["job"])
+        _code_status("Reading your message")
+        route = code_chat.route(text, thread, project, _route_ask)
+        action, where = route["action"], route.get("where", "")
+        print(f"Coding Mode: {action}{' ' + where if where else ''} <- {text[:80]!r}", flush=True)
+        if code_state["stop"] is not None and code_state["stop"].is_set():
+            _thread_say(thread, "Stopped.", "text")
+        elif action in ("create", "change") or (action == "new"):
+            if action == "new":   # something unrelated: its own project, in its own chat (this one stays as it was)
+                _thread_say(thread, f"That's a separate project, so I started a new chat for it: **{code_chat.title_from(text)}**.", "text")
+                thread = code_chat.new_thread()
+                code_chat.add(thread, "user", text, via="window")
+                code_state["thread"] = thread["id"]
+                send_code_thread(thread)
+                send_code_threads()
+                action = "create"
+            before = code_state["job"]
+            handed_off = True
+            reply = start_code_job(action, text, coder.language_for(text) or "", coder.destination_for(text) or "", thread_id=thread["id"], claimed=True)
+            if code_state["job"] is before:   # refused before any work began (it said why)
+                handed_off = False
+                _thread_say(thread, reply, "error")
+        elif action == "answer":
+            _code_answer(thread, project, text)
+        elif action == "run":
+            _ask_to_run(thread, project)
+        elif action == "open":
+            if where == "browser":
+                _ask_to_run(thread, project)
+            else:
+                job = coder.Job(id=project["id"], request=project.get("request", ""), phase="done", files=project.get("files", []), checks=project.get("checks", []),
+                                **{k: project.get(k, "") for k in ("name", "language", "path", "summary", "run", "test", "needs")})
+                _thread_say(thread, _deliver_code(job, "vscode" if where == "vscode" else "local"), "text")
+        elif action == "tests":
+            _code_status("Running the tests")
+            reply = run_code_tests(project=project)
+            _thread_say(thread, reply, "text")
+        elif action == "deliver":
+            job = coder.Job(id=project["id"], request=project.get("request", ""), phase="done", files=project.get("files", []), checks=project.get("checks", []),
+                            **{k: project.get(k, "") for k in ("name", "language", "path", "summary", "run", "test", "needs")})
+            _thread_say(thread, _deliver_code(job, where if where in code_destinations.DESTINATIONS else "zip"), "text")
+    except Exception as e:
+        traceback.print_exc()
+        try:
+            _thread_say(thread, coder.friendly_error(e), "error")
+        except Exception:
+            send_ui_update_once({"type": "coding_note", "message": coder.friendly_error(e)})
+    finally:
+        if not handed_off:
+            _release_code()
+            send_ui_update_once({"type": "coding_status", "data": {"busy": False, "step": "", "thread": code_state["thread"]}})
+            thread = code_chat.load(code_state["thread"]) if code_state["thread"] else None
+            if thread:
+                send_code_thread(thread)
+
+
+def coding_confirm(thread_id: str, message_id: str, yes: bool) -> None:
+    """The answer to a "Start it?" question in the chat."""
+    thread = code_chat.load(thread_id)
+    if not thread:
+        return
+    asked = next((m for m in thread["messages"] if m["id"] == message_id and m["kind"] == "confirm"), None)
+    if not asked or asked.get("answer"):
+        return   # already answered (a double click, or a second window)
+    code_chat.update(thread, message_id, answer="yes" if yes else "no")
+    send_ui_update_once({"type": "coding_message", "thread": thread["id"], "data": {**asked, "answer": "yes" if yes else "no"}})
+    if not yes:
+        _thread_say(thread, "Okay, I didn't start it.", "text")
+        return
+    project = project_by_path(thread.get("path", ""))
+    if not project:
+        _thread_say(thread, "That project's folder isn't there any more.", "error")
+        return
+    try:
+        plan = code_run.guide(project["path"], project.get("run", ""))
+        said = code_run.launch(project["path"], plan)
+        code_chat.audit("run", project=project["path"], how=(plan.get("launch") or {}).get("command") or (plan.get("launch") or {}).get("path", ""))
+        _thread_say(thread, said, "text")
+    except Exception as e:
+        _thread_say(thread, f"I couldn't start it: {e}", "error")
+
+
+def coding_file_op(data: dict) -> None:
+    """The explorer's own file operations: save, new file, new folder, rename, delete. Inside the project folder only,
+    never while Jarvis is writing it, and a copy of anything replaced or deleted is kept first."""
+    thread = code_chat.load(str(data.get("thread") or "")) if data.get("thread") else None
+    project = project_by_path((thread or {}).get("path", ""))
+    op, rel = str(data.get("op") or ""), str(data.get("path") or "").strip().rstrip("/")   # a leading "/" stays: safe_path refuses it
+    note = lambda message, ok=False: send_ui_update_once({"type": "coding_fs", "data": {"op": op, "path": rel, "ok": ok, "message": message}})
+    if not project:
+        return note("Open a project first.")
+    if code_state["busy"]:
+        return note("Jarvis is working on this project right now; try again when it's done.")
+    root = project["path"]
+    try:
+        full = coder.safe_path(root, rel)
+        if op == "save":
+            content = str(data.get("content") if data.get("content") is not None else "")
+            if len(content.encode("utf-8")) > coder.MAX_FILE_BYTES:
+                return note("That file is too large to save from here.")
+            if os.path.exists(full):
+                coder.backup_files(root, [rel], datetime.now().strftime("%Y%m%d-%H%M%S") + "-edit")
+            with open(full, "w", encoding="utf-8", newline="") as f:
+                f.write(content)
+            message = f"Saved {rel}."
+        elif op in ("newfile", "mkdir"):
+            if os.path.exists(full):
+                return note(f"{rel} already exists.")
+            if op == "mkdir":
+                os.makedirs(full)
+            else:
+                os.makedirs(os.path.dirname(full), exist_ok=True)
+                open(full, "x", encoding="utf-8").close()
+            message = f"Created {rel}{'/' if op == 'mkdir' else ''}."
+        elif op == "rename":
+            target = str(data.get("to") or "").strip().rstrip("/")
+            to_full = coder.safe_path(root, target)
+            if os.path.exists(to_full):
+                return note(f"{target} already exists.")
+            os.makedirs(os.path.dirname(to_full), exist_ok=True)
+            os.rename(full, to_full)
+            message = f"Renamed {rel} to {target}."
+        elif op == "delete":
+            if not os.path.exists(full):
+                return note(f"{rel} isn't there.")
+            backup = os.path.join(coder.BACKUP_DIR, f"{coder.slug(os.path.basename(root))}-{datetime.now().strftime('%Y%m%d-%H%M%S')}-deleted", rel)
+            os.makedirs(os.path.dirname(backup), exist_ok=True)
+            if os.path.isdir(full):
+                shutil.copytree(full, backup)
+                shutil.rmtree(full)
+            else:
+                shutil.copy2(full, backup)
+                os.remove(full)
+            message = f"Deleted {rel} (a copy is kept in Jarvis's code backups)."
+        else:
+            return note("I don't know that file operation.")
+    except (coder.CodeError, OSError) as e:
+        return note(f"Couldn't {op.replace('newfile', 'create').replace('mkdir', 'create')} {rel}: {e}")
+    code_chat.audit("file_" + op, project=root, path=rel, to=str(data.get("to") or ""))
+    note(message, ok=True)
+    send_code_thread(thread)
+
+
 def coding_window_says(data: dict) -> None:
     """Everything the Coding Mode window asks for. Slow work (the AI, tests, sign-in) runs off the socket's thread."""
     kind = data.get("type")
     reply = lambda payload: send_ui_update_once(payload)
+    background = lambda target, *args: threading.Thread(target=target, args=args, daemon=True, name=kind).start()
     if kind == "code_window":
         code_state["open"] = data.get("open") is True
     elif kind == "code_info":
         reply({"type": "coding_info", "data": coding_info()})
-    elif kind == "code_start":
-        text = str(data.get("request") or "").strip()[:4000]
-        if len(text.split()) < 2:
-            return reply({"type": "coding_note", "message": "Say what to build, in a sentence or two."})
-        answer = start_code_job("create", text, coder.language_for(text) or "", coder.destination_for(text) or "")
-        if not answer.startswith("On it"):
-            reply({"type": "coding_note", "message": answer})
-    elif kind == "code_change":
-        project = next((p for p in coder.load_history() if p["id"] == data.get("id")), None)
-        if project:
-            code_state["project"] = project
-        answer = start_code_job("change", str(data.get("request") or "").strip()[:4000])
-        if not answer.startswith("On it"):
-            reply({"type": "coding_note", "message": answer})
-    elif kind == "code_pick":
-        project = next((p for p in coder.load_history() if p["id"] == data.get("id")), None)
-        if project and os.path.isdir(project["path"]):
-            code_state.update(project=project, at=time.time())
-            reply({"type": "coding", "data": {**project, "phase": "done", "changed": []}})
+        send_code_threads()
+    elif kind == "code_threads":
+        send_code_threads()
+    elif kind == "code_open_thread":
+        thread = code_chat.load(str(data.get("id") or ""))
+        if not thread and data.get("project"):   # a project from before chats: its chat starts now
+            project = next((p for p in coder.load_history() if p["id"] == data.get("project")), None)
+            if project and os.path.isdir(project["path"]):
+                thread = code_chat.for_path(project["path"]) or code_chat.new_thread(path=project["path"], title=project.get("name", ""))
+        if thread:
+            code_state["thread"] = thread["id"]
+            project = project_by_path(thread.get("path", ""))
+            if project:
+                code_state.update(project=project, at=time.time())
+            send_code_thread(thread)
+        else:
+            reply({"type": "coding_note", "message": "That chat isn't there any more."})
+    elif kind == "code_prefs":
+        code_chat.save_prefs(sort=data.get("sort"), showEarlier=data.get("showEarlier"))
+        send_code_threads()
+    elif kind == "code_hide":
+        code_chat.set_hidden(str(data.get("key") or ""), data.get("hidden") is True)
+        send_code_threads()
+    elif kind == "code_rename":
+        key = str(data.get("key") or "")
+        if key.startswith("path:"):   # a project from before chats: its chat starts now, with the new name
+            path = key[5:]
+            if os.path.isdir(path):
+                thread = code_chat.for_path(path) or code_chat.new_thread(path=path)
+                code_chat.rename(thread["id"], str(data.get("title") or ""))
+                if key in code_chat.prefs()["hidden"]:
+                    code_chat.set_hidden(key, False)
+                    code_chat.set_hidden(thread["id"], True)
+        else:
+            code_chat.rename(key, str(data.get("title") or ""))
+        send_code_threads()
+        if code_state["thread"] and code_state["thread"] == key:
+            send_code_thread(code_chat.load(key))
+    elif kind == "code_remove":
+        background(coding_remove, data)
+    elif kind == "code_open_folder":   # "Show the folder" from the sidebar: only a folder Coding Mode knows as a project
+        path = str(data.get("path") or "")
+        known = {p.get("path") for p in coder.load_history()} | {t.get("path") for t in code_chat.threads()}
+        if path in known and os.path.isdir(path):
+            code_destinations.reveal(path)
         else:
             reply({"type": "coding_note", "message": "That project's folder isn't there any more."})
+    elif kind == "code_new_thread":
+        code_state["thread"] = ""
+        send_code_thread(None)
+    elif kind == "code_send":
+        background(coding_send, str(data.get("thread") or ""), str(data.get("text") or ""))
+    elif kind == "code_stop":
+        stop = code_state["stop"]
+        if stop is not None:
+            stop.set()
+            _code_status("Stopping after the current step")
+    elif kind == "code_run":
+        thread = code_chat.load(str(data.get("thread") or ""))
+        project = project_by_path((thread or {}).get("path", ""))
+        if thread and project:
+            _ask_to_run(thread, project)
+    elif kind == "code_confirm":
+        background(coding_confirm, str(data.get("thread") or ""), str(data.get("id") or ""), data.get("yes") is True)
+    elif kind == "code_fs":
+        background(coding_file_op, data)
     elif kind == "code_file":
-        project = current_code_project()
+        thread = code_chat.load(str(data.get("thread") or "")) if data.get("thread") else None
+        project = project_by_path(thread.get("path", "")) if thread else current_code_project()
         job = code_state["job"]
         path = str(data.get("path") or "")
         try:
@@ -1421,20 +2018,64 @@ def coding_window_says(data: dict) -> None:
             reply({"type": "coding_file", "path": path, "content": content,
                    "diff": job.diffs.get(path, "") if job and job.path == project["path"] else ""})
         except (coder.CodeError, OSError, UnicodeDecodeError, TypeError) as e:
-            reply({"type": "coding_file", "path": path, "content": "", "error": f"I couldn't read that file ({type(e).__name__})."})
+            reply({"type": "coding_file", "path": path, "content": "", "error": "This file isn't text, so it can't be shown here." if isinstance(e, UnicodeDecodeError)
+                   else f"I couldn't read that file ({type(e).__name__})."})
+    elif kind == "code_open_url":   # a "get it here" link in How to run (the window itself never navigates)
+        url = str(data.get("url") or "")
+        if re.match(r"^https://[\w.-]+(?:/[\w./%#?=&+-]*)?$", url):
+            webbrowser.open(url)
+    elif kind == "code_open_file":
+        thread = code_chat.load(str(data.get("thread") or ""))
+        project = project_by_path((thread or {}).get("path", ""))
+        try:
+            full = coder.safe_path(project["path"], str(data.get("path") or ""))
+            found = code_destinations.vscode_command()
+            if found and found[0] == "cli":
+                subprocess.Popen([found[1], "--reuse-window", project["path"], "--goto", full], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                message = f"Opened {data.get('path')} in VS Code."
+            else:
+                osal.open_path(full)
+                message = f"Opened {data.get('path')}."
+            reply({"type": "coding_note", "message": message})
+        except Exception as e:
+            reply({"type": "coding_note", "message": f"I couldn't open that file: {e}"})
     elif kind in ("code_tests", "code_deliver", "code_connect_drive", "code_check"):
+        thread = code_chat.load(str(data.get("thread") or "")) if data.get("thread") else None
+        project = project_by_path(thread.get("path", "")) if thread else current_code_project()
+
         def work():
+            if not project:
+                return reply({"type": "coding_note", "message": "Open a project first."})
             if kind == "code_tests":
-                run_code_tests()
+                if not _claim_code():
+                    return reply({"type": "coding_note", "message": "Jarvis is busy with this project; try again when it's done."})
+                try:
+                    _code_status("Running the tests")
+                    answer = run_code_tests(project=project)
+                finally:
+                    _release_code()
+                if thread:
+                    _thread_say(thread, answer, "text")
+                    send_code_thread(thread)
             elif kind == "code_check":
-                project = current_code_project()
-                if project and code_state["job"] and code_state["job"].path == project["path"]:
-                    code_state["job"].checks = coder.check_project(project["path"])
-                    _code_progress(code_state["job"])
+                job = coder.Job(id=project["id"], request=project.get("request", ""), phase="done", files=project.get("files", []),
+                                **{k: project.get(k, "") for k in ("name", "language", "path", "summary", "run", "test", "needs", "thread")})
+                job.checks = coder.check_project(project["path"])
+                coder.save_project_record(job.public())
+                if thread:
+                    _thread_say(thread, f"I checked {project['name']} again: {coder.checks_summary(job.checks)}", "text")
+                    send_code_thread(thread)
             elif kind == "code_deliver":
-                answer = handle_code_command(f"save it in {code_destinations.SPOKEN.get(str(data.get('destination')), 'a folder on this computer')}") \
-                    if str(data.get("destination")) in code_destinations.DESTINATIONS else "I don't know that place."
-                reply({"type": "coding_note", "message": answer or ""})
+                destination = str(data.get("destination") or "")
+                if destination not in code_destinations.DESTINATIONS:
+                    return reply({"type": "coding_note", "message": "I don't know that place."})
+                job = coder.Job(id=project["id"], request=project.get("request", ""), phase="done", files=project.get("files", []), checks=project.get("checks", []),
+                                **{k: project.get(k, "") for k in ("name", "language", "path", "summary", "run", "test", "needs")})
+                answer = _deliver_code(job, destination)
+                if thread:
+                    _thread_say(thread, answer, "text")
+                else:
+                    reply({"type": "coding_note", "message": answer})
             else:
                 try:
                     code_destinations.drive_credentials(interactive=True)
@@ -2867,6 +3508,43 @@ def _sun_answer(what: str, place):
 
 
 planets_shown = 0   # how many planet models the window has been sent this session (kept, to open again)
+projector_last = None   # the model on the projector, for follow-ups ("show me its inside")
+
+
+def handle_projector_command(text: str):
+    """Questions about something with a shape: an interactive 3D model in the projector, with the answer above it.
+
+    The planets, the Sun, the Moon and the Earth globe are handled before this (their own paths stay as they were).
+    The AI writes a small plan (projector.SYSTEM); projector.sanitize keeps only what the window is allowed to draw.
+    """
+    global projector_last
+    if not projector.wants_model(text, projector_last):
+        return None
+    plan = None
+    for attempt in range(2):   # a second try only when the answer wasn't readable JSON
+        try:
+            reply = groq_chat(model=GROQ_MODEL, role="chat", messages=projector.build_messages(text, projector_last),
+                              max_tokens=2600, temperature=0.4 if attempt == 0 else 0.2)
+            plan = projector.parse_reply(reply.choices[0].message.content or "")
+        except Exception as e:
+            print(f"Projector: the AI couldn't plan a model ({str(e)[:160]}).", flush=True)
+            break
+        if plan is not None:
+            break
+    spec = projector.sanitize(plan, text)
+    if not spec and (projector.explicit(text) or projector.catalog(text)):
+        # asked to see something this file knows how to draw: draw it, even though the AI declined, failed or wasn't reachable
+        spec = projector.fallback(text)
+    if not spec:
+        return None   # a plain answer serves this better (or the plan was unusable): the usual path answers it
+    if spec["same_model"] and projector_last and spec["generator"] == projector_last.get("generator"):
+        spec["update_only"] = True   # same model: the window keeps it and only changes the words and the highlight
+    # about the subject already on the projector: highlight the parts it's about (a new subject opens whole, nothing picked)
+    spec["followUp"] = bool(projector_last and time.time() - projector_last.get("at", 0) < projector.FOLLOW_UP_SECONDS
+                            and spec["title"].lower() == str(projector_last.get("title", "")).lower())
+    projector_last = projector.memory(spec)
+    send_ui_update_once({"type": "projector", "data": spec})
+    return projector.spoken(spec)
 
 
 def handle_planet_command(text: str):
@@ -4073,6 +4751,9 @@ def handle_direct_command(text: str):
     graph_reply = handle_graph_command(text)
     if graph_reply:
         return graph_reply
+    projector_reply = handle_projector_command(text)   # after the planets, the globe and graphs, which keep their own windows
+    if projector_reply:
+        return projector_reply
     image_reply = handle_image_command(text) or handle_image_generation(text)
     if image_reply:
         return image_reply
@@ -4754,8 +5435,21 @@ def spotify_api_candidates(results: dict, query: str) -> list:
 
 
 def _play_uri_with_keys(chosen: dict, start_seconds=None) -> str:
-    """Start exactly `chosen` (its URI) with the Web API, and check Spotify reports it playing."""
+    """Start exactly `chosen` (its URI) and check Spotify reports it playing. On a Mac playing here (not on the phone),
+    the Spotify app is told directly (spotify_local.mac_play_uri): Spotify's Web API can accept a play command for
+    this computer and then play nothing. Elsewhere, or if that fails, the Web API."""
     global youtube_active, netflix_active, stremio_active, spotify_active
+    if _spotify_here_on_mac():
+        try:
+            now = spotify_local.mac_play_uri(chosen["uri"], chosen.get("title", ""),
+                                             start_seconds if chosen.get("kind") == "track" else None)
+        except spotify_local.SpotifyLocalError as e:
+            print(f"Spotify (app): {chosen['uri']} didn't start ({e}); trying Spotify's Web API.", flush=True)
+        else:
+            youtube_active = netflix_active = stremio_active = False
+            spotify_active = True
+            print(f"Spotify (app): playing {now!r}", flush=True)
+            return _playing_reply(chosen, start_seconds, bool(start_seconds) and chosen.get("kind") == "track")
     device_id = ensure_spotify_device()
     if not device_id:
         return "Spotify needs to be open on a device first."
@@ -4866,16 +5560,60 @@ def _spotify_playlists(client) -> list:
     return playlists
 
 
+class SpotifyNotStarted(Exception):
+    """Spotify took the request but nothing (or something else) is playing: said as that, never as "Playing …"."""
+
+
+def _spotify_started(uri: str = "", uris: list = None, tries: int = 12) -> bool:
+    """Spotify reports `uri` (as the playlist/album/artist being played, or the song), or one of `uris`, playing."""
+    wanted = set(uris or []) | ({uri} if uri else set())
+    for _ in range(tries):
+        time.sleep(0.4)
+        try:
+            now = (spotify_library() or sp).current_playback() or {}
+        except Exception:
+            return False
+        if now.get("is_playing") and ({(now.get("context") or {}).get("uri"), (now.get("item") or {}).get("uri")} & wanted):
+            return True
+    return False
+
+
+def _spotify_here_on_mac() -> bool:
+    """Playing on this Mac's Spotify app (not for the phone): then the app is told directly, which plays at once,
+    while Spotify's Web API can answer "OK" for this computer and play nothing (seen 2026-10-24)."""
+    return osal.IS_MAC and not getattr(_spotify_target, "phone", False) and spotify_local.installed()
+
+
 def _spotify_play_context(uri: str = "", uris: list = None, shuffle: bool = False) -> None:
+    """Start a playlist, album or artist (uri) or a list of songs (uris), and make sure it really started. On a Mac
+    the Spotify app's own command comes first: measured on this Mac, the Web API's start loaded a playlist without
+    playing it, and a list of songs not at all, while it answered "OK"."""
     if shuffle:
         try:
             spotify_player_call(lambda device_id: sp.shuffle(True, device_id=device_id))
         except Exception:
             pass   # a device that can't shuffle still plays
+    if uri and not uris and _spotify_here_on_mac():
+        try:
+            spotify_local.mac_ready()   # (opened in the background first if it's closed)
+            if shuffle:
+                spotify_local._osa("set shuffling to true")
+            spotify_local.mac_play_uri(uri)
+            _mark_spotify_playing()
+            return
+        except Exception as e:
+            print(f"Spotify's own play command didn't take {uri}: {e!r}", flush=True)
     if uris:
         spotify_player_call(lambda device_id: sp.start_playback(device_id=device_id, uris=uris))
     else:
         spotify_player_call(lambda device_id: sp.start_playback(device_id=device_id, context_uri=uri))
+    if not _spotify_started(uri, uris):
+        try:
+            spotify_player_call(lambda device_id: sp.start_playback(device_id=device_id))   # loaded but paused: press play
+        except Exception:
+            pass
+        if not _spotify_started(uri, uris, tries=6):
+            raise SpotifyNotStarted()
     _mark_spotify_playing()
 
 
@@ -4967,6 +5705,11 @@ def play_spotify_collection(req) -> str:
         return play_song(f"{req.query} {req.by}".strip())
     except SpotifyNotReady:
         return "Spotify needs to be open on a device first. Open Spotify, then ask me again."
+    except SpotifyNotStarted:
+        if req.kind == "liked" and spotify_local.installed():
+            spotify_local.open_uri(LIKED_SONGS)
+            return "I opened your Liked Songs in Spotify, but Spotify didn't start them when I asked: press play there."
+        return f"I asked Spotify to play {req.query or 'that'}, but it didn't start. Open Spotify and press play, or ask me again."
     except Exception as e:
         print(f"Spotify couldn't play {req.kind} {req.query!r}: {e!r}", flush=True)
         return "Spotify didn't respond to that. Make sure Spotify is open, then ask me again."
@@ -5102,8 +5845,16 @@ def play_another_by_artist(artist: str) -> str:
             return f"I couldn't find songs by {artist_info['name']} on Spotify."
         pick = random.choice(choices)
         _recent_artist_picks.append(pick["id"])
-        spotify_player_call(lambda device_id: sp.start_playback(
-            device_id=device_id, context_uri=pick["album"]["uri"], offset={"uri": pick["uri"]}))
+        played_here = False
+        if _spotify_here_on_mac():
+            try:
+                spotify_local.mac_play_uri(pick["uri"], pick.get("name", ""))
+                played_here = True
+            except spotify_local.SpotifyLocalError as e:
+                print(f"Spotify (app): {pick['uri']} didn't start ({e}); trying Spotify's Web API.", flush=True)
+        if not played_here:
+            spotify_player_call(lambda device_id: sp.start_playback(
+                device_id=device_id, context_uri=pick["album"]["uri"], offset={"uri": pick["uri"]}))
     except SpotifyNotReady:
         return "Spotify needs to be open on a device first."
     except Exception as e:
@@ -5144,7 +5895,7 @@ def what_is_playing(text: str):
 
 def skip_track(direction: str) -> str:
     """Spotify: jump to the next or previous song and say what is playing now."""
-    if not sp:
+    if not sp or (_spotify_here_on_mac() and spotify_local.running()):
         try:
             now = spotify_local.skip(direction)
         except spotify_local.SpotifyLocalError as e:
@@ -5179,7 +5930,7 @@ spotify_active = False  # True once Jarvis started a song on Spotify; "stop" / "
 
 
 def resume_music() -> str:
-    if not sp:
+    if not sp or (_spotify_here_on_mac() and spotify_local.running()):
         return "Resuming the music." if spotify_local.resume() else "Spotify isn't open."
     try:
         device_id = get_device_id()
@@ -5227,7 +5978,7 @@ def spotify_playback_action(text: str):
 
 
 def pause_music(**kwargs) -> str:
-    if not sp:
+    if not sp or (_spotify_here_on_mac() and spotify_local.running()):
         return "Paused playback." if spotify_local.pause() else "Spotify isn't playing anything."
     try:
         device_id = get_device_id()
@@ -5923,6 +6674,97 @@ _PLAY_IT = re.compile(r"^(?:yes|yeah|yep|sure|ok|okay)?[, ]*(?:please )?(?:play 
                       r"|start it|yes|yeah|yep|sure|go ahead)(?: please)?[.!]*$", re.I)
 
 
+def spotify_exact_target(request: str) -> tuple:
+    """(uri, label) of exactly what "play … on Spotify" means, found with the user's Spotify keys, the same way the
+    direct path finds it (their own playlists first). Raises spotify_local.SpotifyLocalError, saying why, if it isn't
+    there: take control never plays a guess."""
+    fail = spotify_local.SpotifyLocalError
+    req = music.parse_music_request(request)
+    try:
+        if req and req.kind in ("playlist", "liked"):
+            library = spotify_library()
+            if not library:
+                ask_spotify_library_permission()
+                raise fail(_NEEDS_SPOTIFY_PERMISSION)
+            playlists = _spotify_playlists(library)
+            own = best_match_playlist(library, req.names or ["Liked Songs"], playlists) if req.names else None
+            if own:
+                return own["uri"], f"your playlist {own['name'].strip()}"
+            if req.kind == "liked":
+                return LIKED_SONGS, "your liked songs"
+            close = sorted(playlists, key=lambda p: -max(music.name_score(n, p.get("name", "")) for n in req.names))
+            close = [p["name"].strip() for p in close[:2] if max(music.name_score(n, p.get("name", "")) for n in req.names) >= 0.35]
+            raise fail(f"I couldn't find a playlist called {req.query} in your Spotify." + (f" Did you mean {' or '.join(close)}?" if close else ""))
+        if req and req.kind in ("album", "artist"):
+            key = "albums" if req.kind == "album" else "artists"
+            q = f"album:{req.query} artist:{req.by}" if req.kind == "album" and req.by else req.query
+            found = [x for x in (sp.search(q=q, type=req.kind, limit=10).get(key) or {}).get("items") or [] if x]
+            hit = music.best_match(req.query, found, lambda x: x.get("name", ""), threshold=0.6) or (found[0] if found and req.by else None)
+            if not hit:
+                raise fail(f"I couldn't find the {req.kind} {req.query} on Spotify.")
+            by = ((hit.get("artists") or [{}])[0].get("name") or "") if req.kind == "album" else ""
+            return hit["uri"], f"the {req.kind} {hit['name']}" + (f" by {by}" if by else "")
+        wanted = (req.query + (f" {req.by}" if req.by else "")) if req else re.sub(
+            r"^(?:play|put on|start|listen to|open)\s+|\s+(?:on|in|with|using|from)\s+(?:the\s+)?spotify.*$", "", request.strip(), flags=re.I)
+        intent = spotify_match.parse(wanted)
+        found, pick = [], None
+        for q in spotify_match.queries(intent):
+            found += spotify_api_candidates(sp.search(q=q, type="track,artist,album,playlist", limit=10), q)
+            pick = spotify_match.choose(intent, found)
+            if spotify_match.settled(intent, pick):
+                break
+        if not pick or pick["verdict"] == "none":
+            raise fail(f"I couldn't find {intent['text']} on Spotify.")
+        best = pick["best"]
+        return best["uri"], spotify_match.describe(best)
+    except fail:
+        raise
+    except Exception as e:
+        raise fail(f"Spotify didn't answer when I looked it up ({type(e).__name__}).")
+
+
+LIKED_SONGS = "spotify:collection:tracks"   # opens the Liked Songs page in the app; played through Spotify's API
+
+
+def _liked_uris(limit: int = 50) -> list:
+    library = spotify_library()
+    items = (library.current_user_saved_tracks(limit=limit) or {}).get("items") or [] if library else []
+    return [i["track"]["uri"] for i in items if i.get("track") and i["track"].get("uri")]
+
+
+def spotify_confirms(uri: str):
+    """Whether Spotify reports exactly `uri` playing now (as the playlist/album being played, or as the song):
+    True or False, or None when it can't be asked."""
+    client = spotify_library() or sp
+    try:
+        playback = client.current_playback() if client else None
+    except Exception:
+        return None
+    if not playback:
+        return None
+    playing = {(playback.get("context") or {}).get("uri"), (playback.get("item") or {}).get("uri")}
+    if uri == LIKED_SONGS:   # one of the liked songs is playing (the first 50 are what Jarvis starts)
+        return (playback.get("item") or {}).get("uri") in set(_liked_uris())
+    return uri in playing
+
+
+def _spotify_start_exact(uri: str) -> None:
+    try:
+        if uri == LIKED_SONGS:
+            saved = _liked_uris()
+            if not saved:
+                raise spotify_local.SpotifyLocalError("You don't have any liked songs on Spotify yet.")
+            _spotify_play_context(uris=saved)
+        elif uri.split(":")[1] in ("track", "episode"):
+            _spotify_play_context(uris=[uri])
+        else:
+            _spotify_play_context(uri)
+    except (SpotifyNotStarted, SpotifyNotReady):
+        what = "your Liked Songs" if uri == LIKED_SONGS else "it"
+        raise spotify_local.SpotifyLocalError(f"I opened {what} in Spotify, but Spotify didn't start {'them' if uri == LIKED_SONGS else 'it'} "
+                                              "when I asked: press play there.")
+
+
 def handle_spotify_search(text: str):
     """"Search for Jane! in Spotify" opens Spotify's search for it; "play it" then plays it. Spotify requests go to
     Spotify directly, never through general computer control (which the small local AI can't do reliably)."""
@@ -5941,8 +6783,11 @@ def handle_spotify_search(text: str):
         if wanted:
             # "Take control" was said explicitly: show it, even if Spotify keys are set up (those would otherwise
             # play it invisibly through the online API) — the whole point of the words was to watch it happen.
-            return start_computer_task(f"play {wanted} on Spotify", scripted=spotify_local.visible_steps(wanted),
-                                       after=_mark_spotify_playing)
+            if sp:   # with the user's Spotify keys: the exact thing, opened and played in the app, confirmed by Spotify
+                steps = spotify_local.exact_steps(lambda: spotify_exact_target(rest), spotify_confirms, _spotify_start_exact)
+            else:    # without them: Spotify's search, read from the screen (or its keyboard shortcuts)
+                steps = spotify_local.visible_steps(wanted)
+            return start_computer_task(f"play {wanted} on Spotify", scripted=steps, after=_mark_spotify_playing)
     match = _SPOTIFY_SEARCH.match(rest)
     if not match:
         return None
@@ -6774,24 +7619,60 @@ _FAREWELL = re.compile(
 )
 
 
-def is_shutdown_command(text):
-    """Goodbyes in any of the usual forms ("Goodbye.", "Have a good day, Jarvis", "bye bye") put Jarvis to sleep."""
+# Asleep only when asked to sleep, in so many words ("go to sleep", "sleep mode", "Jarvis, you can sleep now"; in
+# Hebrew "לך לישון" arrives here translated). A goodbye no longer does it: videos, songs and the room say "bye", "see you
+# next time" and "have a good day" too, and Jarvis kept falling asleep when nobody had asked him to (reported 2026-10-15).
+_SLEEP_COMMAND = re.compile(
+    r"(?:(?:hey|ok|okay|alright|all right|so|now|then|please|jarvis|jervis|thanks|thank you)\s+)*"
+    r"(?:(?:you can|you may|can you|could you|would you|it's time to|its time to|time to|i want you to|i need you to)\s+)?"
+    r"(?:(?:go|going|get|head)\s+(?:back\s+)?to\s+sleep(?:\s+mode)?|go\s+sleep|(?:go into|enter|switch to|turn on|activate)\s+sleep\s+mode|"
+    r"sleep\s+mode|sleep|take a (?:nap|rest)|(?:go|get) (?:some )?rest)"
+    r"(?:\s+(?:now|please|jarvis|jervis|for now|for a while|for a bit|then|mode|thanks|thank you))*")
+
+
+def is_sleep_command(text) -> bool:
+    """"Go to sleep", "sleep mode", "Jarvis, you can sleep now": the only things that put Jarvis to sleep by voice.
+    (Never "put the computer to sleep", "a sleep timer" or "I'm going to sleep": those aren't said to him about him.)"""
     if not text:
         return False
-    normalized = " ".join(re.sub(r"[^a-z' ]", " ", text.lower()).split())
+    normalized = " ".join(re.sub(r"[^a-z' ]", " ", str(text).lower()).split())
+    return bool(_SLEEP_COMMAND.fullmatch(normalized))
+
+
+def is_shutdown_command(text):   # (the main loop's name for it)
+    return is_sleep_command(text)
+
+
+def is_farewell(text) -> bool:
+    """"Goodbye", "have a good day, Jarvis", "bye bye": answered, but Jarvis stays awake."""
+    if not text:
+        return False
+    normalized = " ".join(re.sub(r"[^a-z' ]", " ", str(text).lower()).split())
     return bool(_FAREWELL.fullmatch(normalized))
 
 
+_farewell_hint_said = [False]
+
+
 def farewell_reply(text: str) -> str:
+    """The answer to a goodbye. Jarvis stays awake; the first time, he says how to put him to sleep."""
     n = " ".join(re.sub(r"[^a-z' ]", " ", (text or "").lower()).split())
-    sleep = "Going to sleep. Say Hey Jarvis when you want me."
     if re.search(r"good ?night|\bnight\b|\bevening\b|sleep well|\bbed\b|\bsleep\b", n):
-        return f"Goodnight! {sleep}"
-    if re.search(r"have a", n):
-        return f"You too, have a great day! {sleep}"
-    if re.search(r"see you|see ya|later|take care", n):
-        return f"See you later! {sleep}"
-    return f"Goodbye! {sleep}"
+        reply = "Goodnight!"
+    elif re.search(r"have a", n):
+        reply = "You too, have a great day!"
+    elif re.search(r"see you|see ya|later|take care", n):
+        reply = "See you later!"
+    else:
+        reply = "Goodbye!"
+    if not _farewell_hint_said[0]:
+        _farewell_hint_said[0] = True
+        reply += " I'll stay here; say “go to sleep” when you want me to sleep."
+    return reply
+
+
+def sleep_reply() -> str:
+    return "Going to sleep. Say “Hey Jarvis” when you want me."
 
 
 # Whisper sometimes invents these when it is fed noise or near-silence.
@@ -6884,7 +7765,7 @@ def transcribe(audio, passive=False) -> str:
     wav_bytes = audio.get_wav_data(convert_rate=16000, convert_width=2)
     # This computer's Whisper gets the recording as made (44.1/48 kHz): stt_local resamples it with a proper filter.
     native = audio.get_wav_data(convert_width=2)
-    local = [("Local Whisper", lambda: transcribe_local(native))] if stt_local.ready() else []
+    local = [("Local Whisper", lambda: transcribe_local(native))] if stt_local.ready() and not LIGHT else []
     online_whisper = ([("Whisper", lambda: transcribe_groq(wav_bytes))]
                       if GROQ_KEY and time.time() >= groq_down_until else [])  # needs the key and a reachable Groq
     google = [("Google", lambda: transcribe_google(audio))]
@@ -6920,7 +7801,7 @@ def listen_or_typed(source):
     energy_threshold at all; this floor is just a last-resort guard in case anything else ever changes it mid-wait."""
     deadline = time.time() + 10
     while True:
-        if not typed_inputs.empty():
+        if not typed_inputs.empty() or listen_now.is_set():
             return None
         try:
             return recognizer.listen(source, timeout=1, phrase_time_limit=20)
@@ -7035,7 +7916,12 @@ def _recognized(audio, passive: bool):
 def listen(passive=False):
     """Capture one phrase and return its text, or None if nothing usable was heard."""
     global mic_calibrated, last_calibrated_at
+    if TEST_AUDIO and os.getenv("JARVIS_TEST_AUDIO_QUICK") == "1" and (passive or not quick_visible):   # Quick Access tests
+        time.sleep(0.25)
+        return None
     if TEST_AUDIO or os.getenv("JARVIS_TEST_AUDIO"):
+        if not passive and TEST_AUDIO:
+            send_status("listening")   # as with the microphone: listening while the recording "is said"
         audio = _test_recording()
         return _recognized(audio, passive) if audio is not None else None
     if AUDIO_OFF:   # test mode: nothing is recorded; typed lines are handled by the main loop
@@ -7323,7 +8209,8 @@ def understand_language(text, typed=None):
     switch_to = language.turn_language(str(text))
     if switch_to:
         language.set_reply_language(switch_to)
-        stt_local.prefer(switch_to)   # that language's speech model on the GPU from now on (the other one leaves)
+        if not LIGHT:
+            stt_local.prefer(switch_to)   # that language's speech model on the GPU from now on (the other one leaves)
     if pending:   # the answer to "did I understand you right?"
         answer = " ".join(re.sub(r"[^a-z' ]", " ", (heard.english or "").lower()).split())
         answer = re.sub(r"\s+(?:thanks|thank you|please)$", "", answer)
@@ -7445,7 +8332,9 @@ def main_loop():
             typed = None
         turn_from_phone = isinstance(typed, PhoneVoiceInput)
         if typed:
-            awake = True  # typing to Jarvis wakes him, and works while the microphone is muted
+            if not (isinstance(typed, QuickTyped) and not window_visible):
+                awake = True  # typing to Jarvis wakes him, and works while the microphone is muted
+            # (typed in the Quick Access bar with the main window closed: answered, without listening to the room after)
             text = typed
             send_status("thinking")
             print(f"Typed: {text}")
@@ -7457,6 +8346,9 @@ def main_loop():
                 time.sleep(0.3)
                 continue
 
+            if listen_now.is_set():   # the Quick Access bar's microphone: a request, no wake phrase needed
+                listen_now.clear()
+                awake = True
             if not awake and os.getenv("JARVIS_WAKE_WORD", "on") == "off":
                 awake = True   # Settings: no wake phrase needed, Jarvis is always listening while the mic is on
             if not awake:
@@ -7501,6 +8393,14 @@ def main_loop():
         text = english
 
         turn_started = time.time()
+        if is_sleep_command(text):   # asked to sleep, in so many words: the only way to it, by voice or typing
+            goodbye = localized(sleep_reply())
+            broadcast("ai", goodbye)
+            reply_to_phone_if_needed(typed, goodbye)
+            speak(goodbye)
+            awake = False
+            send_status("sleeping")
+            continue
         try:
             with turn_timer.timed("command"):
                 direct_result = handle_command(text, typed=bool(typed))
@@ -7522,13 +8422,12 @@ def main_loop():
                 speak(spoken_version(shown))
             continue
 
-        if is_shutdown_command(text):
+        if is_farewell(text):   # a goodbye is answered; Jarvis stays awake
             goodbye = localized(farewell_reply(text))
             broadcast("ai", goodbye)
             reply_to_phone_if_needed(typed, goodbye)
+            remember_turn(messages, text, goodbye, turn_started)
             speak(goodbye)
-            awake = False
-            send_status("sleeping")
             continue
 
         messages.append({"role": "user", "content": text})
@@ -7582,6 +8481,9 @@ def greet_on_startup() -> None:
         time.sleep(0.2)
     if not connected_clients:   # started headless (no window): stay asleep, the wake phrase still works
         return
+    time.sleep(1.0)   # the window says whether it's shown just after it connects
+    if not window_visible:   # started hidden, at sign-in: stay asleep until "Hey Jarvis" (or the Quick Access bar)
+        return
     awake = True
     greeting = time_greeting()
     broadcast("ai", greeting)
@@ -7593,8 +8495,105 @@ def set_window_visible(visible: bool) -> None:
     while he's using the computer: then his window only steps aside.)"""
     global window_visible, awake
     window_visible = visible
-    if not visible and not control_active() and not session_active():
+    if not visible and not quick_visible and not control_active() and not session_active():
         awake = False
+
+
+def set_quick_visible(visible: bool) -> None:
+    """The Quick Access bar opened or closed. Closed with the main window closed too, Jarvis goes back to sleep (what
+    was asked still gets its answer; only listening to the room stops)."""
+    global quick_visible, awake
+    quick_visible = visible
+    if not visible:
+        listen_now.clear()
+        if not window_visible and not control_active() and not session_active():
+            awake = False
+
+
+def menubar_layout() -> dict:
+    """macOS: where the frontmost app's menus sit in the menu bar (Accessibility), so Jarvis Top can live in the
+    bar without covering the Apple menu or the app's name: {"ok", "app", "name_end", "menus_end"} in screen points."""
+    try:
+        import AppKit
+        import ApplicationServices as AS
+        if not AS.AXIsProcessTrusted():
+            # Started by Jarvis Wake, Jarvis has Wake's permissions: ask macOS once (its own dialog, then System
+            # Settings → Privacy & Security → Accessibility), never again after that, whatever the answer
+            asked = paths.data("accessibility-asked")
+            if not os.path.exists(asked):
+                try:
+                    open(asked, "w").close()
+                    AS.AXIsProcessTrustedWithOptions({AS.kAXTrustedCheckOptionPrompt: True})
+                    print("Asked macOS for Accessibility, so Jarvis Top can sit between the app's menus and the notch "
+                          "(and Jarvis can use the computer when Jarvis Wake started him).", flush=True)
+                except Exception as e:
+                    print(f"Couldn't ask for Accessibility: {e}", flush=True)
+            return {"ok": False, "why": "accessibility"}
+        app = AppKit.NSWorkspace.sharedWorkspace().frontmostApplication()
+        element = AS.AXUIElementCreateApplication(app.processIdentifier())
+        err, bar = AS.AXUIElementCopyAttributeValue(element, "AXMenuBar", None)
+        if err or bar is None:
+            return {"ok": False, "app": str(app.localizedName())}
+        err, items = AS.AXUIElementCopyAttributeValue(bar, "AXChildren", None)
+        spans = []
+        for item in items or []:
+            err, frame = AS.AXUIElementCopyAttributeValue(item, "AXFrame", None)
+            if err or frame is None:
+                continue
+            ok, rect = AS.AXValueGetValue(frame, AS.kAXValueCGRectType, None)
+            if ok and rect.size.width > 0:
+                spans.append((rect.origin.x, rect.origin.x + rect.size.width))
+        if not spans:
+            return {"ok": False, "app": str(app.localizedName())}
+        spans.sort()
+        return {"ok": True, "app": str(app.localizedName()), "name_end": spans[min(1, len(spans) - 1)][1],
+                "menus_end": max(end for _, end in spans), "starts": [start for start, _ in spans[2:]]}
+    except Exception as e:
+        return {"ok": False, "why": str(e)[:120]}
+
+
+class QuickTyped(str):
+    """A line typed in the Quick Access bar."""
+
+
+def quick_listen() -> None:
+    """The bar's microphone: listen for one request right away (no wake phrase), stopping Jarvis if he's talking."""
+    if mic_muted.is_set():
+        send_ui_update_once({"type": "quick_notice", "kind": "muted",
+                             "text": "The microphone is off in Jarvis. Turn it on to talk, or type instead."})
+        return
+    interrupt_speech.set()
+    listen_now.set()
+
+
+def quick_cancel() -> None:
+    """The bar's Stop: Jarvis stops talking, what's being heard is dropped, and a computer-control task stops. (An
+    answer already being written still arrives.)"""
+    interrupt_speech.set()
+    listen_now.clear()
+    mute_changes[0] += 1   # anything being heard right now is thrown away, as when the microphone is muted
+    if computer_task is not None:
+        computer_task.stop()
+    if session_active():
+        end_control_session()
+    send_status("idle")
+
+
+def quick_gesture_pressed(gesture: str) -> None:
+    send_ui_update_once({"type": "quick_toggle", "source": gesture})
+
+
+quick_watcher = quick_keys.Watcher(quick_gesture_pressed, log=lambda m: print(m, flush=True))
+
+
+def apply_quick_settings() -> None:
+    """Watch for the double-press shortcut, if that's the one chosen (key combinations are the window's job)."""
+    on = os.getenv("JARVIS_QUICK", "on") != "off"
+    shortcut = os.getenv("JARVIS_QUICK_SHORTCUT") or settings.BY_KEY["JARVIS_QUICK_SHORTCUT"]["default"]
+    status = quick_watcher.configure(shortcut if on and shortcut in quick_keys.GESTURES else None)
+    if status.get("message"):
+        print(f"Quick Access: {status['message']}", flush=True)
+    send_ui_update("quick_keys", status)
 
 
 def watch_parent_window() -> None:
@@ -7646,6 +8645,7 @@ if __name__ == "__main__":
                              name="phone-relay").start()
 
     threading.Thread(target=check_ai_connection, daemon=True).start()
+    apply_quick_settings()
     threading.Thread(target=refresh_devices, daemon=True).start()   # so Settings has them ready
     if LLM_BACKEND in ("ollama", "auto") and os.getenv("JARVIS_NO_AI_SETUP") != "1":   # (that switch: tests only)
         local_ai_manager.start_background()   # the local AI is the AI, or the backup: make sure it's there
@@ -7656,13 +8656,13 @@ if __name__ == "__main__":
     threading.Thread(target=weather_loop, daemon=True).start()
     threading.Thread(target=_install_blender_bridge, daemon=True, name="blender-startup-script").start()
     def warm_up():   # the speech models, then the local AI model needed first, so the first sentence doesn't wait
-        if not AUDIO_OFF or TEST_AUDIO:
+        if (not AUDIO_OFF or TEST_AUDIO) and not LIGHT:
             stt_local.prefer(language.reply_language(), background=False)   # the language last spoken
             stt_local.preload()   # first: the AI model's GPU plan has to count the speech models' memory
         if LLM_BACKEND in ("ollama", "auto"):
             local_llm.warm_up(local_ai.first_role())
     threading.Thread(target=warm_up, daemon=True, name="warm-up").start()
-    if stt_local.BILINGUAL:   # the Hebrew voice (CPU, ~3 s to load): ready before the first Hebrew answer
+    if stt_local.BILINGUAL and not LIGHT:   # the Hebrew voice (CPU, ~3 s to load): ready before the first Hebrew answer
         import hebrew_voice
         threading.Thread(target=hebrew_voice.preload, daemon=True, name="hebrew-voice-preload").start()
     if os.getenv("JARVIS_SHOW_WINDOW") == "1":  # started with run.py: show the window right away, not only after "Hey Jarvis"

@@ -683,15 +683,16 @@
     $('earthNext').addEventListener('click', () => window.reopenGlobe('next'));
     $('earthLayer').addEventListener('mousedown', (e) => { if (e.target === $('earthLayer')) window.hideGlobe(); });
     document.addEventListener('keydown', (e) => {
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      const keys = window.jarvisKeys;
+      if (keys.typing(e)) return;
       const open = window.globeOpen();
       if (e.key === 'Escape' && open) { e.preventDefault(); window.hideGlobe(); }
       else if (e.key === 'ArrowLeft' && open) { e.preventDefault(); window.reopenGlobe('prev'); }
       else if (e.key === 'ArrowRight' && open) { e.preventDefault(); window.reopenGlobe('next'); }
       else if (e.key === ' ' && open) { e.preventDefault(); togglePause(); }
-      else if (e.key.toLowerCase() === 'r' && open && !e.metaKey && !e.ctrlKey) { e.preventDefault(); replay(); }
-      else if (e.key.toLowerCase() === 's' && open && !e.metaKey && !e.ctrlKey) { e.preventDefault(); skip(); }
-      else if (e.key.toLowerCase() === 'e' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat) {
+      else if (open && keys.shortcut(e, 'r')) { e.preventDefault(); replay(); }
+      else if (open && keys.shortcut(e, 's')) { e.preventDefault(); skip(); }
+      else if (keys.shortcut(e, 'e')) {
         e.preventDefault();
         open ? window.hideGlobe() : window.reopenGlobe('last');
       }

@@ -1,0 +1,2225 @@
+[
+ {
+  "title": "Iron Man",
+  "summary": "Tony Stark in his powered armour.",
+  "explanation": "Iron Man is Tony Stark, a Marvel Comics hero who first appeared in 1963. His armour is powered by the arc reactor in its chest, and repulsors in the gloves and boots let him fly.",
+  "generator": "humanoid",
+  "question": "",
+  "params": {
+   "preset": "ironman"
+  },
+  "info": {
+   "Helmet": "Protects the head; in a suit it often holds the displays and sensors too.",
+   "Eyes": "Where the wearer sees out: lenses or slits, sometimes with displays behind them.",
+   "Neck": "Carries the head and lets it turn and nod.",
+   "Chest Plate": "The armour over the chest, protecting the heart and lungs.",
+   "Arms": "Shoulder, upper arm, elbow and forearm: they reach, lift and carry.",
+   "Gloves": "Cover and protect the hands while keeping them able to grip.",
+   "Legs": "Hip, thigh, knee and shin: they carry the body's weight and walk, run and jump.",
+   "Boots": "Protect the feet and lower legs.",
+   "Arc Reactor": "The glowing power source in Iron Man's chest that runs the whole suit.",
+   "Abdomen Plates": "Overlapping armour plates over the belly, so the suit can bend at the waist.",
+   "Repulsors": "Iron Man's glowing palm emitters: they help him fly and steer, and fire as weapons.",
+   "Boot Jets": "Iron Man's boot thrusters, which lift the suit and let it fly."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Helmet",
+   "Eyes",
+   "Neck",
+   "Chest Plate",
+   "Arms",
+   "Gloves",
+   "Legs",
+   "Boots",
+   "Arc Reactor",
+   "Abdomen Plates",
+   "Repulsors",
+   "Boot Jets"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Spider-Man",
+  "summary": "Peter Parker, the web-slinging hero.",
+  "explanation": "Spider-Man is Peter Parker, created by Stan Lee and Steve Ditko in 1962. A spider's bite gave him strength, agility and a spider-sense for danger, and he swings on webs fired from his wrists.",
+  "generator": "humanoid",
+  "question": "",
+  "params": {
+   "preset": "spiderman"
+  },
+  "info": {
+   "Mask": "Hides the wearer's identity and covers the whole head.",
+   "Eyes": "Where the wearer sees out: lenses or slits, sometimes with displays behind them.",
+   "Neck": "Carries the head and lets it turn and nod.",
+   "Torso": "The chest and belly, which protect the heart, lungs and the organs of digestion.",
+   "Arms": "Shoulder, upper arm, elbow and forearm: they reach, lift and carry.",
+   "Gloves": "Cover and protect the hands while keeping them able to grip.",
+   "Legs": "Hip, thigh, knee and shin: they carry the body's weight and walk, run and jump.",
+   "Boots": "Protect the feet and lower legs.",
+   "Spider Emblem": "The spider on Spider-Man's chest, his symbol.",
+   "Web Shooters": "Devices on Spider-Man's wrists that fire his webs; in the original comics he built them himself."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Mask",
+   "Eyes",
+   "Neck",
+   "Torso",
+   "Arms",
+   "Gloves",
+   "Legs",
+   "Boots",
+   "Spider Emblem",
+   "Web Shooters"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Batman",
+  "summary": "Bruce Wayne, the caped detective.",
+  "explanation": "Batman is Bruce Wayne, a DC Comics hero who first appeared in 1939. He has no superpowers: he relies on training, detective work and the gadgets on his utility belt.",
+  "generator": "humanoid",
+  "question": "",
+  "params": {
+   "preset": "batman"
+  },
+  "info": {
+   "Cowl": "A hood-like mask over the head and upper face, leaving the mouth and chin bare.",
+   "Eyes": "Where the wearer sees out: lenses or slits, sometimes with displays behind them.",
+   "Neck": "Carries the head and lets it turn and nod.",
+   "Torso": "The chest and belly, which protect the heart, lungs and the organs of digestion.",
+   "Arms": "Shoulder, upper arm, elbow and forearm: they reach, lift and carry.",
+   "Gloves": "Cover and protect the hands while keeping them able to grip.",
+   "Legs": "Hip, thigh, knee and shin: they carry the body's weight and walk, run and jump.",
+   "Boots": "Protect the feet and lower legs.",
+   "Jaw": "The part of the face left uncovered by the mask.",
+   "Bat Emblem": "The bat on Batman's chest, his symbol.",
+   "Cape": "A long cloak from the shoulders, the classic mark of a superhero.",
+   "Utility Belt": "Batman's belt of pouches holding his gadgets."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Cowl",
+   "Eyes",
+   "Neck",
+   "Torso",
+   "Arms",
+   "Gloves",
+   "Legs",
+   "Boots",
+   "Jaw",
+   "Bat Emblem",
+   "Cape",
+   "Utility Belt"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Superman",
+  "summary": "The hero from Krypton.",
+  "explanation": "Superman, created by Jerry Siegel and Joe Shuster, first appeared in 1938. He comes from the planet Krypton, and under Earth's yellow sun he can fly and has enormous strength and speed.",
+  "generator": "humanoid",
+  "question": "",
+  "params": {
+   "preset": "superman"
+  },
+  "info": {
+   "Head": "Holds the brain and the senses: sight, hearing, smell and taste.",
+   "Eyes": "Where the wearer sees out: lenses or slits, sometimes with displays behind them.",
+   "Neck": "Carries the head and lets it turn and nod.",
+   "Torso": "The chest and belly, which protect the heart, lungs and the organs of digestion.",
+   "Arms": "Shoulder, upper arm, elbow and forearm: they reach, lift and carry.",
+   "Hands": "Each hand has 27 bones and an opposable thumb for gripping.",
+   "Legs": "Hip, thigh, knee and shin: they carry the body's weight and walk, run and jump.",
+   "Boots": "Protect the feet and lower legs.",
+   "Hair": "Hair on the head helps keep it warm and shields it from the sun.",
+   "Emblem": "Superman's 'S' shield, the crest of his Kryptonian family, the House of El.",
+   "Cape": "A long cloak from the shoulders, the classic mark of a superhero.",
+   "Belt": "Holds the suit together at the waist."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Neck",
+   "Torso",
+   "Arms",
+   "Hands",
+   "Legs",
+   "Boots",
+   "Hair",
+   "Emblem",
+   "Cape",
+   "Belt"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Captain America",
+  "summary": "Steve Rogers, the super-soldier.",
+  "explanation": "Captain America is Steve Rogers, a Marvel hero first published in 1941. A super-soldier serum made him as strong and fast as a human can be, and he carries a nearly indestructible round shield.",
+  "generator": "humanoid",
+  "question": "",
+  "params": {
+   "preset": "captain_america"
+  },
+  "info": {
+   "Helmet": "Protects the head; in a suit it often holds the displays and sensors too.",
+   "Eyes": "Where the wearer sees out: lenses or slits, sometimes with displays behind them.",
+   "Neck": "Carries the head and lets it turn and nod.",
+   "Torso": "The chest and belly, which protect the heart, lungs and the organs of digestion.",
+   "Arms": "Shoulder, upper arm, elbow and forearm: they reach, lift and carry.",
+   "Gloves": "Cover and protect the hands while keeping them able to grip.",
+   "Legs": "Hip, thigh, knee and shin: they carry the body's weight and walk, run and jump.",
+   "Boots": "Protect the feet and lower legs.",
+   "Jaw": "The part of the face left uncovered by the mask.",
+   "Star": "The white star on Captain America's chest.",
+   "Stripes": "Red and white stripes across Captain America's suit, from the US flag.",
+   "Shield": "A round or kite-shaped shield carried on the arm to block blows.",
+   "Belt": "Holds the suit together at the waist."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Helmet",
+   "Eyes",
+   "Neck",
+   "Torso",
+   "Arms",
+   "Gloves",
+   "Legs",
+   "Boots",
+   "Jaw",
+   "Star",
+   "Stripes",
+   "Shield",
+   "Belt"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Hulk",
+  "summary": "Bruce Banner's enormous green alter ego.",
+  "explanation": "The Hulk is scientist Bruce Banner, who turns into a huge green giant when he gets angry. The angrier he gets, the stronger he becomes.",
+  "generator": "humanoid",
+  "question": "",
+  "params": {
+   "preset": "hulk"
+  },
+  "info": {
+   "Head": "Holds the brain and the senses: sight, hearing, smell and taste.",
+   "Eyes": "Where the wearer sees out: lenses or slits, sometimes with displays behind them.",
+   "Neck": "Carries the head and lets it turn and nod.",
+   "Torso": "The chest and belly, which protect the heart, lungs and the organs of digestion.",
+   "Arms": "Shoulder, upper arm, elbow and forearm: they reach, lift and carry.",
+   "Hands": "Each hand has 27 bones and an opposable thumb for gripping.",
+   "Legs": "Hip, thigh, knee and shin: they carry the body's weight and walk, run and jump.",
+   "Feet": "Each foot has 26 bones and arches that act like springs when walking.",
+   "Hair": "Hair on the head helps keep it warm and shields it from the sun.",
+   "Shorts": "Clothing for the hips and thighs."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Neck",
+   "Torso",
+   "Arms",
+   "Hands",
+   "Legs",
+   "Feet",
+   "Hair",
+   "Shorts"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Astronaut",
+  "summary": "A spacewalker in a pressure suit.",
+  "explanation": "A spacesuit is a small spacecraft shaped like a person. It holds air at pressure, supplies oxygen, keeps the wearer at a safe temperature, and its gold visor reflects the Sun's glare.",
+  "generator": "humanoid",
+  "question": "",
+  "params": {
+   "preset": "astronaut"
+  },
+  "info": {
+   "Helmet": "Protects the head; in a suit it often holds the displays and sensors too.",
+   "Eyes": "Where the wearer sees out: lenses or slits, sometimes with displays behind them.",
+   "Neck": "Carries the head and lets it turn and nod.",
+   "Torso": "The chest and belly, which protect the heart, lungs and the organs of digestion.",
+   "Arms": "Shoulder, upper arm, elbow and forearm: they reach, lift and carry.",
+   "Hands": "Each hand has 27 bones and an opposable thumb for gripping.",
+   "Legs": "Hip, thigh, knee and shin: they carry the body's weight and walk, run and jump.",
+   "Feet": "Each foot has 26 bones and arches that act like springs when walking.",
+   "Visor": "A gold-coated visor that reflects the Sun's glare and heat.",
+   "Life Support Pack": "The backpack that supplies oxygen, removes carbon dioxide, and cools the suit.",
+   "Mission Patch": "A badge for the mission and the country flying it."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Helmet",
+   "Eyes",
+   "Neck",
+   "Torso",
+   "Arms",
+   "Hands",
+   "Legs",
+   "Feet",
+   "Visor",
+   "Life Support Pack",
+   "Mission Patch"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Robot",
+  "summary": "A humanoid machine.",
+  "explanation": "A humanoid robot is shaped like us so it can use tools and spaces built for people. Motors move its joints, sensors let it see and feel, and a computer decides what to do.",
+  "generator": "humanoid",
+  "question": "",
+  "params": {
+   "preset": "robot"
+  },
+  "info": {
+   "Head": "Holds the brain and the senses: sight, hearing, smell and taste.",
+   "Eyes": "Where the wearer sees out: lenses or slits, sometimes with displays behind them.",
+   "Neck": "Carries the head and lets it turn and nod.",
+   "Torso": "The chest and belly, which protect the heart, lungs and the organs of digestion.",
+   "Arms": "Shoulder, upper arm, elbow and forearm: they reach, lift and carry.",
+   "Gloves": "Cover and protect the hands while keeping them able to grip.",
+   "Legs": "Hip, thigh, knee and shin: they carry the body's weight and walk, run and jump.",
+   "Boots": "Protect the feet and lower legs.",
+   "Antenna": "Sends and receives radio signals so the robot can be talked to.",
+   "Chest Panel": "Status lights showing what the robot is doing."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Neck",
+   "Torso",
+   "Arms",
+   "Gloves",
+   "Legs",
+   "Boots",
+   "Antenna",
+   "Chest Panel"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Knight",
+  "summary": "A medieval warrior in plate armour.",
+  "explanation": "A knight's full plate armour weighed about 15 to 25 kilograms, spread over the whole body, so a trained knight could still run, climb and get up from the ground.",
+  "generator": "humanoid",
+  "question": "",
+  "params": {
+   "preset": "knight"
+  },
+  "info": {
+   "Helmet": "Protects the head; in a suit it often holds the displays and sensors too.",
+   "Eyes": "Where the wearer sees out: lenses or slits, sometimes with displays behind them.",
+   "Neck": "Carries the head and lets it turn and nod.",
+   "Chest Plate": "The armour over the chest, protecting the heart and lungs.",
+   "Arms": "Shoulder, upper arm, elbow and forearm: they reach, lift and carry.",
+   "Gloves": "Cover and protect the hands while keeping them able to grip.",
+   "Legs": "Hip, thigh, knee and shin: they carry the body's weight and walk, run and jump.",
+   "Boots": "Protect the feet and lower legs.",
+   "Plume": "Feathers on top of the helmet, so a knight could be told apart in battle.",
+   "Sword": "A double-edged steel blade with a cross-guard to protect the hand.",
+   "Shield": "A round or kite-shaped shield carried on the arm to block blows."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Helmet",
+   "Eyes",
+   "Neck",
+   "Chest Plate",
+   "Arms",
+   "Gloves",
+   "Legs",
+   "Boots",
+   "Plume",
+   "Sword",
+   "Shield"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Person",
+  "summary": "The human body.",
+  "explanation": "An adult human body has 206 bones and more than 600 muscles. We walk upright on two legs, which leaves our hands free to use tools.",
+  "generator": "humanoid",
+  "question": "",
+  "params": {
+   "preset": "person"
+  },
+  "info": {
+   "Head": "Holds the brain and the senses: sight, hearing, smell and taste.",
+   "Eyes": "Where the wearer sees out: lenses or slits, sometimes with displays behind them.",
+   "Neck": "Carries the head and lets it turn and nod.",
+   "Torso": "The chest and belly, which protect the heart, lungs and the organs of digestion.",
+   "Arms": "Shoulder, upper arm, elbow and forearm: they reach, lift and carry.",
+   "Hands": "Each hand has 27 bones and an opposable thumb for gripping.",
+   "Legs": "Hip, thigh, knee and shin: they carry the body's weight and walk, run and jump.",
+   "Feet": "Each foot has 26 bones and arches that act like springs when walking.",
+   "Hair": "Hair on the head helps keep it warm and shields it from the sun.",
+   "Trousers": "Clothing for the hips and legs."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Neck",
+   "Torso",
+   "Arms",
+   "Hands",
+   "Legs",
+   "Feet",
+   "Hair",
+   "Trousers"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Dog",
+  "summary": "Our oldest companion animal.",
+  "explanation": "Dogs were domesticated from wolves at least 15,000 years ago. They see fewer colours than we do but smell far better: a dog's nose has up to 300 million scent receptors, against our 6 million.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "dog"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Cat",
+  "summary": "A small hunter that lives with people.",
+  "explanation": "A cat walks on its toes and keeps its claws pulled in until it needs them. Its whiskers sense air currents and help it judge whether a gap is wide enough to get through.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "cat"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Horse",
+  "summary": "A fast, strong grazing animal.",
+  "explanation": "Horses can doze standing up: tendons and ligaments in their legs lock in place so they don't fall. Each hoof is made of keratin, the same material as our fingernails.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "horse"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Hooves": "A hard covering of keratin, like a thick toenail, that the animal walks on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others.",
+   "Mane": "Long hair along the neck or round the face; it can protect the neck and signal health to rivals and mates."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Hooves",
+   "Tail",
+   "Mane"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Zebra",
+  "summary": "A wild African horse with stripes.",
+  "explanation": "No two zebras have the same stripes. The stripes seem to put off biting flies, and may also help zebras keep cool.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "zebra"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Hooves": "A hard covering of keratin, like a thick toenail, that the animal walks on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others.",
+   "Mane": "Long hair along the neck or round the face; it can protect the neck and signal health to rivals and mates."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Hooves",
+   "Tail",
+   "Mane"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Lion",
+  "summary": "The big cat of the African savanna.",
+  "explanation": "Lions are the only cats that live in groups, called prides. Only males grow a mane, which makes them look bigger to rivals.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "lion"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others.",
+   "Mane": "Long hair along the neck or round the face; it can protect the neck and signal health to rivals and mates."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail",
+   "Mane"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Tiger",
+  "summary": "The largest wild cat.",
+  "explanation": "The tiger is the largest wild cat, and every tiger's stripes are different. Its skin is striped too, not just its fur.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "tiger"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Elephant",
+  "summary": "The largest animal on land.",
+  "explanation": "The African elephant is the largest land animal, weighing up to about 6 tonnes. Its trunk is a nose and upper lip joined together, and its tusks are very long incisor teeth.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "elephant"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Feet": "Broad padded feet spread a heavy body's weight over the ground.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others.",
+   "Trunk": "The nose and upper lip joined into one long, boneless limb with tens of thousands of muscles: it breathes, smells, drinks and grabs.",
+   "Tusks": "Very long incisor teeth that keep growing; used for digging, lifting and defence."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Neck",
+   "Body",
+   "Legs",
+   "Feet",
+   "Tail",
+   "Trunk",
+   "Tusks"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Giraffe",
+  "summary": "The tallest animal alive.",
+  "explanation": "The giraffe is the tallest animal, up to about 5.5 metres. Its neck has just seven vertebrae, the same number as ours, but each is up to about 25 centimetres long.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "giraffe"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Hooves": "A hard covering of keratin, like a thick toenail, that the animal walks on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others.",
+   "Mane": "Long hair along the neck or round the face; it can protect the neck and signal health to rivals and mates.",
+   "Ossicones": "Skin-covered bony knobs on a giraffe's head; males use them when they spar with their necks."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Hooves",
+   "Tail",
+   "Mane",
+   "Ossicones"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Panda",
+  "summary": "A bear that eats bamboo.",
+  "explanation": "Giant pandas eat almost nothing but bamboo, up to about 12 to 38 kilograms a day, because it gives them so little energy.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "panda"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Wolf",
+  "summary": "A wild dog that hunts in packs.",
+  "explanation": "Wolves live and hunt in family packs and talk to each other by howling, which can carry for many kilometres.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "wolf"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Fox",
+  "summary": "A small wild dog with a bushy tail.",
+  "explanation": "Foxes hunt alone, mostly at dusk and at night. They use their bushy tails for balance and wrap them round themselves to keep warm.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "fox"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Bear",
+  "summary": "A large, powerful omnivore.",
+  "explanation": "Bears eat both plants and animals. Many sleep through the winter, living off fat they stored up in the autumn.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "bear"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Polar Bear",
+  "summary": "The Arctic's largest hunter.",
+  "explanation": "Polar bears have black skin under see-through fur, which looks white. They hunt seals from the sea ice.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "bear",
+   "color": "#f1efe8",
+   "color2": "#d9d4c8"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Cow",
+  "summary": "A grazing animal kept for milk and meat.",
+  "explanation": "A cow's stomach has four compartments; it brings grass back up to chew again as cud, which lets it digest tough plants we can't.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "cow"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Hooves": "A hard covering of keratin, like a thick toenail, that the animal walks on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others.",
+   "Horns": "Permanent bone cores covered in keratin, kept for life, used for defence and display."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Hooves",
+   "Tail",
+   "Horns"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Pig",
+  "summary": "A farm animal, clever and curious.",
+  "explanation": "Pigs are among the most intelligent animals and have an excellent sense of smell. They roll in mud to keep cool because they barely sweat.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "pig"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Hooves": "A hard covering of keratin, like a thick toenail, that the animal walks on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Hooves",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Sheep",
+  "summary": "A grazing animal kept for its wool.",
+  "explanation": "A sheep's fleece keeps growing, so farmed sheep are shorn about once a year; one fleece can weigh several kilograms.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "sheep"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Hooves": "A hard covering of keratin, like a thick toenail, that the animal walks on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others.",
+   "Wool": "A thick fleece of crimped fibres that traps air and keeps the animal warm and dry."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Hooves",
+   "Tail",
+   "Wool"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Deer",
+  "summary": "A grazing animal whose males grow antlers.",
+  "explanation": "A male deer grows a new set of antlers every year and sheds them in winter; antlers are among the fastest-growing tissue of any animal.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "deer"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Hooves": "A hard covering of keratin, like a thick toenail, that the animal walks on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others.",
+   "Antlers": "Bone that grows fresh every year and is shed in winter; males use them in fights for mates."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Hooves",
+   "Tail",
+   "Antlers"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Rabbit",
+  "summary": "A small grazing mammal with long ears.",
+  "explanation": "Rabbits have eyes high on the sides of their heads and can see almost all the way round, to spot danger from any direction.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "rabbit"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Mouse",
+  "summary": "A small rodent.",
+  "explanation": "A mouse's front teeth never stop growing, so it gnaws constantly to keep them short.",
+  "generator": "animal",
+  "question": "",
+  "params": {
+   "kind": "mouse"
+  },
+  "info": {
+   "Head": "Holds the brain and the main senses: eyes, ears, nose and mouth all sit close to it.",
+   "Eyes": "Two forward-and-sideways eyes; hunters' eyes face more forward to judge distance, prey animals' more sideways to watch all round.",
+   "Ears": "Catch sound and turn toward it; many animals move each ear on its own to find where a sound comes from.",
+   "Muzzle": "The snout: it holds the jaws and teeth and a long nasal passage for smelling.",
+   "Nose": "Damp skin on the nose helps catch scent molecules; many mammals smell far better than people do.",
+   "Neck": "Carries the head and lets it turn; almost every mammal has seven neck vertebrae, from a mouse to a giraffe.",
+   "Body": "The chest holds the heart and lungs, the belly the stomach and gut; the spine runs along the top.",
+   "Legs": "Four legs carry the weight; most mammals that run walk on their toes, so the 'knee' bending backwards is really an ankle.",
+   "Paws": "Soft pads cushion each step and grip; claws help with digging, climbing or holding on.",
+   "Tail": "Helps with balance and turning, swats insects, and signals mood to others."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Head",
+   "Eyes",
+   "Ears",
+   "Muzzle",
+   "Nose",
+   "Neck",
+   "Body",
+   "Legs",
+   "Paws",
+   "Tail"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "House",
+  "summary": "A family home.",
+  "explanation": "A house stands on a foundation that spreads its weight into the ground. Its walls carry the floors and the roof, and the sloping roof sheds rain and snow.",
+  "generator": "building",
+  "question": "",
+  "params": {
+   "kind": "house",
+   "floors": 2
+  },
+  "info": {
+   "Roof": "Sloped so rain and snow run off; its overhang keeps water away from the walls.",
+   "Walls": "Carry the floors and the roof, and keep out wind, rain and cold.",
+   "Windows": "Let in light and air; double glazing traps a layer of gas to keep heat in.",
+   "Door": "The way in, sealed against draughts when shut.",
+   "Chimney": "Carries smoke from a fireplace or boiler up and away above the roof.",
+   "Floors": "Each storey's floor rests on beams that pass its load to the walls.",
+   "Rooms": "Inside walls divide the house into rooms for living, cooking and sleeping.",
+   "Stairs": "Connect the floors; each step is usually about 18 cm high.",
+   "Foundation": "Concrete under the walls that spreads the building's weight into the ground.",
+   "Garden": "The plot around the house."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Roof",
+   "Walls",
+   "Windows",
+   "Door",
+   "Chimney",
+   "Floors",
+   "Rooms",
+   "Stairs",
+   "Foundation",
+   "Garden"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Eiffel Tower",
+  "summary": "The iron tower of Paris.",
+  "explanation": "The Eiffel Tower was finished in 1889 for the World's Fair in Paris. It is about 330 metres tall with its antennas, built from some 18,000 wrought-iron parts held together by 2.5 million rivets.",
+  "generator": "building",
+  "question": "",
+  "params": {
+   "kind": "eiffel",
+   "floors": 2
+  },
+  "info": {
+   "Legs": "Four great curved legs that carry the tower's weight down to its foundations.",
+   "Lattice": "Thousands of wrought-iron bars braced in triangles, light but stiff against the wind.",
+   "Arches": "The arches between the legs, added mostly for looks.",
+   "First Floor": "The first platform, 57 metres up.",
+   "Second Floor": "The second platform, 115 metres up.",
+   "Top Floor": "The top platform, 276 metres up, with Gustave Eiffel's private apartment.",
+   "Antenna": "Broadcasting antennas that bring the tower to about 330 metres."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Legs",
+   "Lattice",
+   "Arches",
+   "First Floor",
+   "Second Floor",
+   "Top Floor",
+   "Antenna"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Great Pyramid of Giza",
+  "summary": "The tomb of the pharaoh Khufu.",
+  "explanation": "The Great Pyramid was built for the pharaoh Khufu around 2560 BC, from about 2.3 million stone blocks. At about 146 metres, it was the tallest structure on Earth for more than 3,800 years.",
+  "generator": "building",
+  "question": "",
+  "params": {
+   "kind": "pyramid",
+   "floors": 2
+  },
+  "info": {
+   "Casing": "Once covered in polished white limestone; most of it was taken away for other buildings.",
+   "Capstone": "The pointed top stone of the pyramid; the original is missing.",
+   "King's Chamber": "A granite room deep in the pyramid holding Khufu's stone sarcophagus.",
+   "Queen's Chamber": "A smaller chamber below the King's; despite its name, it was not for a queen.",
+   "Grand Gallery": "A tall sloping passage, 47 metres long, leading up to the King's Chamber.",
+   "Subterranean Chamber": "An unfinished room cut into the bedrock below the pyramid.",
+   "Passages": "Narrow sloping corridors connecting the chambers to the entrance.",
+   "Plateau": "The Giza plateau, the rocky ground the pyramids stand on."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Casing",
+   "Capstone",
+   "King's Chamber",
+   "Queen's Chamber",
+   "Grand Gallery",
+   "Subterranean Chamber",
+   "Passages",
+   "Plateau"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Skyscraper",
+  "summary": "A very tall building.",
+  "explanation": "A skyscraper stands on a steel or concrete frame on deep foundations. A stiff central core holds the lifts and stairs, and its glass walls hang on the frame like a curtain.",
+  "generator": "building",
+  "question": "",
+  "params": {
+   "kind": "skyscraper",
+   "floors": 2
+  },
+  "info": {
+   "Tower": "A steel or concrete frame with glass walls hung on it like a curtain.",
+   "Lobby": "The entrance hall at street level.",
+   "Core": "The stiff concrete heart of the tower, holding the lifts and stairs and resisting the wind.",
+   "Crown": "The top of the tower, often holding machinery and water tanks.",
+   "Spire": "The tall point on top, with a light to warn aircraft.",
+   "Plaza": "The open public space around the tower's base."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Tower",
+   "Lobby",
+   "Core",
+   "Crown",
+   "Spire",
+   "Plaza"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Car",
+  "summary": "A family car.",
+  "explanation": "A car's engine turns the crankshaft, and the gearbox passes that turning to the wheels. The body is a strong shell with crumple zones at the front and back that absorb the energy of a crash.",
+  "generator": "vehicle",
+  "question": "",
+  "params": {
+   "kind": "sedan"
+  },
+  "info": {
+   "Body": "A strong steel shell, with crumple zones at the front and back that absorb a crash.",
+   "Cabin": "The passenger space with its windows; the roof and pillars form a cage that protects the people inside.",
+   "Wheels": "Rubber tyres on metal rims; the tread grips the road and pushes water away.",
+   "Engine": "Burns fuel to turn the crankshaft, which the gearbox passes to the wheels.",
+   "Interior": "The seats, steering wheel and dashboard.",
+   "Headlights": "Light the road ahead and let others see the car.",
+   "Taillights": "Red lights at the back that brighten when the car brakes."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Body",
+   "Cabin",
+   "Wheels",
+   "Engine",
+   "Interior",
+   "Headlights",
+   "Taillights"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Sports Car",
+  "summary": "A fast two-door car.",
+  "explanation": "A sports car sits low to the ground, so air flows over it smoothly and it corners without leaning. A powerful engine and a light body let it speed up quickly.",
+  "generator": "vehicle",
+  "question": "",
+  "params": {
+   "kind": "sports"
+  },
+  "info": {
+   "Body": "A strong steel shell, with crumple zones at the front and back that absorb a crash.",
+   "Cabin": "The passenger space with its windows; the roof and pillars form a cage that protects the people inside.",
+   "Wheels": "Rubber tyres on metal rims; the tread grips the road and pushes water away.",
+   "Engine": "Burns fuel to turn the crankshaft, which the gearbox passes to the wheels.",
+   "Interior": "The seats, steering wheel and dashboard.",
+   "Headlights": "Light the road ahead and let others see the car.",
+   "Taillights": "Red lights at the back that brighten when the car brakes."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Body",
+   "Cabin",
+   "Wheels",
+   "Engine",
+   "Interior",
+   "Headlights",
+   "Taillights"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "SUV",
+  "summary": "A tall car built for space and rough roads.",
+  "explanation": "An SUV rides higher than an ordinary car, with more room inside, and often drives all four wheels for grip on rough or slippery ground.",
+  "generator": "vehicle",
+  "question": "",
+  "params": {
+   "kind": "suv"
+  },
+  "info": {
+   "Body": "A strong steel shell, with crumple zones at the front and back that absorb a crash.",
+   "Cabin": "The passenger space with its windows; the roof and pillars form a cage that protects the people inside.",
+   "Wheels": "Rubber tyres on metal rims; the tread grips the road and pushes water away.",
+   "Engine": "Burns fuel to turn the crankshaft, which the gearbox passes to the wheels.",
+   "Interior": "The seats, steering wheel and dashboard.",
+   "Headlights": "Light the road ahead and let others see the car.",
+   "Taillights": "Red lights at the back that brighten when the car brakes."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Body",
+   "Cabin",
+   "Wheels",
+   "Engine",
+   "Interior",
+   "Headlights",
+   "Taillights"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Airliner",
+  "summary": "A passenger jet.",
+  "explanation": "An airliner flies because its wings are shaped and angled to push air down, which pushes the wings up. Its turbofan engines' big fans push air backwards to drive it forward.",
+  "generator": "vehicle",
+  "question": "",
+  "params": {
+   "kind": "plane"
+  },
+  "info": {
+   "Fuselage": "The long tube holding the passengers and cargo; it is pressurised at cruising height.",
+   "Cockpit": "Where the pilots fly the plane.",
+   "Wings": "Shaped and angled to push air down, which lifts the plane; they also hold most of the fuel.",
+   "Engines": "Turbofans: a big fan pushes air backwards to drive the plane forward.",
+   "Tail Fin": "Keeps the plane flying straight; its rudder turns the nose left and right.",
+   "Stabilizers": "Small wings at the tail that keep the nose steady; their elevators tilt it up and down.",
+   "Landing Gear": "Wheels and shock absorbers for take-off and landing, folded away in flight."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Fuselage",
+   "Cockpit",
+   "Wings",
+   "Engines",
+   "Tail Fin",
+   "Stabilizers",
+   "Landing Gear"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Rocket",
+  "summary": "A launch vehicle that carries satellites to space.",
+  "explanation": "A rocket carries its fuel and the oxygen to burn it, so it works in space. It flies in stages: each one drops away when its fuel runs out, leaving less weight to carry.",
+  "generator": "vehicle",
+  "question": "",
+  "params": {
+   "kind": "rocket"
+  },
+  "info": {
+   "Payload Fairing": "The nose cone that protects the satellite on the way up, then splits off in space.",
+   "Payload": "What the rocket is carrying to space, here a satellite with solar panels.",
+   "Second Stage": "Takes over in space and pushes the payload into orbit.",
+   "Interstage": "Joins the stages and lets them separate cleanly.",
+   "First Stage": "The biggest stage, with most of the fuel; it lifts the rocket through the thick lower air.",
+   "Fins": "Keep the rocket pointing straight while it climbs through the air.",
+   "Engines": "Turbofans: a big fan pushes air backwards to drive the plane forward.",
+   "Exhaust": "Hot gas thrown out of the nozzles at high speed; pushing it down pushes the rocket up."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Payload Fairing",
+   "Payload",
+   "Second Stage",
+   "Interstage",
+   "First Stage",
+   "Fins",
+   "Engines",
+   "Exhaust"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Television",
+  "summary": "A flat-screen LCD TV.",
+  "explanation": "An LCD TV makes its picture by shining a backlight through millions of tiny liquid-crystal shutters and colour filters. The mainboard turns the signal into an image and sets how much light each one lets through.",
+  "generator": "device",
+  "question": "",
+  "params": {
+   "kind": "tv"
+  },
+  "info": {
+   "Screen": "The panel that makes the picture: millions of pixels, each made of red, green and blue parts.",
+   "Front Glass": "Protects the screen; on a phone it also senses your touch.",
+   "Backlight": "LEDs and a diffuser that shine an even white light through the LCD panel.",
+   "Mainboard": "Turns the video signal into the picture and runs the TV's software.",
+   "Power Supply": "Turns mains electricity into the low voltages the electronics need.",
+   "Speakers": "Turn electrical signals into sound.",
+   "Back Cover": "Encloses and protects the electronics.",
+   "Frame": "Holds the layers together and makes the device rigid.",
+   "Stand": "Holds the screen up."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Screen",
+   "Front Glass",
+   "Backlight",
+   "Mainboard",
+   "Power Supply",
+   "Speakers",
+   "Back Cover",
+   "Frame",
+   "Stand"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Laptop",
+  "summary": "A portable computer.",
+  "explanation": "A laptop packs a whole computer into a thin case: the processor and memory on the motherboard, a battery to run it unplugged, a fan to carry away the heat, and a screen in the lid.",
+  "generator": "device",
+  "question": "",
+  "params": {
+   "kind": "laptop"
+  },
+  "info": {
+   "Screen": "The panel that makes the picture: millions of pixels, each made of red, green and blue parts.",
+   "Keyboard": "Each key presses a switch the computer reads as a letter or command.",
+   "Trackpad": "Senses your finger's position and gestures through tiny changes in electric charge.",
+   "Battery": "Lithium-ion cells that store energy and power the device away from a socket.",
+   "Motherboard": "The main circuit board, holding the processor and memory and connecting everything else.",
+   "Fan": "Blows heat out of the case so the processor doesn't overheat.",
+   "Case": "The aluminium shell that holds and protects everything."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Screen",
+   "Keyboard",
+   "Trackpad",
+   "Battery",
+   "Motherboard",
+   "Fan",
+   "Case"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Smartphone",
+  "summary": "A computer that fits in your pocket.",
+  "explanation": "A smartphone's logic board holds its processor and memory, a lithium-ion battery powers it, and the touchscreen senses your finger by tiny changes in electric charge.",
+  "generator": "device",
+  "question": "",
+  "params": {
+   "kind": "phone"
+  },
+  "info": {
+   "Screen": "The panel that makes the picture: millions of pixels, each made of red, green and blue parts.",
+   "Frame": "Holds the layers together and makes the device rigid.",
+   "Battery": "Lithium-ion cells that store energy and power the device away from a socket.",
+   "Logic Board": "A tiny motherboard holding the processor, memory and storage.",
+   "Cameras": "Several cameras with different lenses: wide, ultra-wide and zoom.",
+   "Back Glass": "Glass on the back lets wireless charging reach the coil inside."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Screen",
+   "Frame",
+   "Battery",
+   "Logic Board",
+   "Cameras",
+   "Back Glass"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Acoustic Guitar",
+  "summary": "A six-string acoustic guitar.",
+  "explanation": "When a string is plucked it vibrates; the bridge passes the vibration to the wooden top, which moves the air inside the body and out through the sound hole. Pressing a string onto a fret shortens it and raises its note.",
+  "generator": "guitar",
+  "question": "",
+  "params": {
+   "kind": "acoustic"
+  },
+  "info": {
+   "Body": "The hollow wooden body; its top vibrates with the strings and makes the sound louder.",
+   "Sound Hole": "Lets the sound out of the body.",
+   "Bridge": "Anchors the strings to the body and passes their vibration into it.",
+   "Strings": "Six steel strings; the thicker and looser a string, the lower its note.",
+   "Neck": "The long wooden arm that holds the fretboard; a steel rod inside stops it bending.",
+   "Fretboard": "Where the fingers press the strings to change the notes.",
+   "Frets": "Metal strips across the fretboard; each one raises the note by a semitone.",
+   "Headstock": "The top of the neck, holding the tuning pegs.",
+   "Tuning Pegs": "Turn to tighten or loosen each string and tune it."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Body",
+   "Sound Hole",
+   "Bridge",
+   "Strings",
+   "Neck",
+   "Fretboard",
+   "Frets",
+   "Headstock",
+   "Tuning Pegs"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Electric Guitar",
+  "summary": "A solid-body electric guitar.",
+  "explanation": "An electric guitar's solid body barely makes a sound on its own. Its pickups turn the strings' vibration into an electric signal, which an amplifier makes loud.",
+  "generator": "guitar",
+  "question": "",
+  "params": {
+   "kind": "electric"
+  },
+  "info": {
+   "Body": "The hollow wooden body; its top vibrates with the strings and makes the sound louder.",
+   "Pickups": "Magnets wrapped in wire that turn the strings' vibration into an electric signal for an amplifier.",
+   "Knobs": "Control the volume and tone.",
+   "Bridge": "Anchors the strings to the body and passes their vibration into it.",
+   "Strings": "Six steel strings; the thicker and looser a string, the lower its note.",
+   "Neck": "The long wooden arm that holds the fretboard; a steel rod inside stops it bending.",
+   "Fretboard": "Where the fingers press the strings to change the notes.",
+   "Frets": "Metal strips across the fretboard; each one raises the note by a semitone.",
+   "Headstock": "The top of the neck, holding the tuning pegs.",
+   "Tuning Pegs": "Turn to tighten or loosen each string and tune it."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Body",
+   "Pickups",
+   "Knobs",
+   "Bridge",
+   "Strings",
+   "Neck",
+   "Fretboard",
+   "Frets",
+   "Headstock",
+   "Tuning Pegs"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Sneaker",
+  "summary": "A running shoe.",
+  "explanation": "A running shoe's midsole is foam that cushions each step, its rubber outsole grips the ground, and the heel counter holds the heel steady.",
+  "generator": "shoe",
+  "question": "",
+  "params": {},
+  "info": {
+   "Outsole": "The rubber bottom that grips the ground and resists wear.",
+   "Midsole": "Foam that cushions each step and gives some energy back.",
+   "Upper": "The fabric and mesh over the foot: light, breathable, and shaped to hold it.",
+   "Collar": "The padded opening round the ankle.",
+   "Tongue": "A padded flap under the laces that stops them pressing on the foot.",
+   "Toe Cap": "Reinforces the front, where the shoe wears fastest.",
+   "Heel Counter": "A stiff cup round the heel that holds it steady.",
+   "Side Stripe": "The brand's stripe, which also stiffens the side of the shoe.",
+   "Laces": "Pull the upper snugly round the foot."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Outsole",
+   "Midsole",
+   "Upper",
+   "Collar",
+   "Tongue",
+   "Toe Cap",
+   "Heel Counter",
+   "Side Stripe",
+   "Laces"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Human Heart",
+  "summary": "The muscle that pumps blood round the body.",
+  "explanation": "The heart is a muscular pump about the size of a fist that beats around 100,000 times a day. Its right side pumps blood to the lungs to collect oxygen; its left side pumps that oxygen-rich blood to the whole body.",
+  "generator": "heart",
+  "question": "",
+  "params": {},
+  "info": {
+   "Heart Wall": "Thick cardiac muscle that squeezes about 100,000 times a day without tiring.",
+   "Right Atrium": "Collects oxygen-poor blood returning from the body.",
+   "Left Atrium": "Collects oxygen-rich blood coming from the lungs.",
+   "Right Ventricle": "Pumps oxygen-poor blood to the lungs.",
+   "Left Ventricle": "The strongest chamber: it pumps oxygen-rich blood to the whole body, so its wall is the thickest.",
+   "Septum": "The wall that keeps the heart's left and right sides apart.",
+   "Valves": "Four one-way valves that stop blood flowing backwards; their closing makes the 'lub-dub' sound.",
+   "Aorta": "The body's largest artery, carrying blood from the left ventricle to everywhere else.",
+   "Pulmonary Artery": "Carries oxygen-poor blood from the right ventricle to the lungs.",
+   "Vena Cava": "The two great veins that bring blood back from the body to the right atrium.",
+   "Pulmonary Veins": "Bring oxygen-rich blood from the lungs to the left atrium.",
+   "Coronary Arteries": "Feed the heart muscle itself; a blockage here causes a heart attack.",
+   "Blood Flow": "Blue: oxygen-poor blood going to the lungs. Red: oxygen-rich blood going to the body."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Heart Wall",
+   "Right Atrium",
+   "Left Atrium",
+   "Right Ventricle",
+   "Left Ventricle",
+   "Septum",
+   "Valves",
+   "Aorta",
+   "Pulmonary Artery",
+   "Vena Cava",
+   "Pulmonary Veins",
+   "Coronary Arteries",
+   "Blood Flow"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Car Engine",
+  "summary": "A four-stroke petrol engine.",
+  "explanation": "A four-stroke engine repeats intake, compression, power and exhaust. Burning fuel pushes the piston down, and the crankshaft turns that up-and-down motion into rotation.",
+  "generator": "engine",
+  "question": "",
+  "params": {},
+  "info": {
+   "Cylinder": "The chamber the piston moves up and down in; the fuel burns at its top.",
+   "Piston": "Pushed down by the burning fuel and air; it turns that push into motion.",
+   "Connecting Rod": "Links the piston to the crankshaft.",
+   "Crankshaft": "Turns the piston's up-and-down motion into rotation that drives the wheels.",
+   "Intake Valve": "Opens on the intake stroke to let the fuel and air mixture in.",
+   "Exhaust Valve": "Opens on the exhaust stroke to let the burnt gases out.",
+   "Spark Plug": "Makes the spark that ignites the compressed mixture at the start of the power stroke."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Cylinder",
+   "Piston",
+   "Connecting Rod",
+   "Crankshaft",
+   "Intake Valve",
+   "Exhaust Valve",
+   "Spark Plug"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Computer",
+  "summary": "Inside a desktop PC.",
+  "explanation": "Inside a desktop computer the processor runs programs, memory holds what it is working on, storage keeps files, and the graphics card draws the screen. The power supply turns mains electricity into the low voltages they need.",
+  "generator": "computer",
+  "question": "",
+  "params": {},
+  "info": {
+   "Case": "Holds and protects everything, and guides the air that cools it.",
+   "Motherboard": "The main circuit board: every other part plugs into it and talks through it.",
+   "CPU": "The processor: it runs the programs, one instruction after another, billions of times a second.",
+   "CPU Cooler": "Draws heat away from the processor so it can keep running fast.",
+   "Memory (RAM)": "Fast, temporary storage for what the computer is working on right now; it empties when the power goes off.",
+   "Graphics Card (GPU)": "Draws everything you see on screen, and runs many small calculations in parallel.",
+   "Storage (SSD)": "Keeps your files and programs, even when the computer is off.",
+   "Power Supply": "Turns the electricity from the wall into the steady voltages the parts need."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Case",
+   "Motherboard",
+   "CPU",
+   "CPU Cooler",
+   "Memory (RAM)",
+   "Graphics Card (GPU)",
+   "Storage (SSD)",
+   "Power Supply"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "DNA",
+  "summary": "The molecule of heredity.",
+  "explanation": "DNA carries the instructions for building and running living things. Two strands twist into a double helix, held together by pairs of bases: adenine with thymine, guanine with cytosine.",
+  "generator": "helix",
+  "question": "",
+  "params": {
+   "kind": "dna",
+   "turns": 2
+  },
+  "info": {
+   "Backbone": "Alternating sugar and phosphate groups: the two sides of the ladder, twisting into a helix.",
+   "Adenine": "A base (A). In DNA it pairs with thymine; in RNA with uracil.",
+   "Thymine": "A base (T) found in DNA; it pairs with adenine through two hydrogen bonds.",
+   "Guanine": "A base (G); it pairs with cytosine through three hydrogen bonds.",
+   "Cytosine": "A base (C); it pairs with guanine."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Backbone",
+   "Adenine",
+   "Thymine",
+   "Guanine",
+   "Cytosine"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Carbon Atom",
+  "summary": "Element 6.",
+  "explanation": "Carbon has six protons and, in its most common form, six neutrons. Its four outer electrons let it bond in long chains and rings, the basis of all life on Earth.",
+  "generator": "atom",
+  "question": "",
+  "params": {
+   "z": 6,
+   "symbol": "C",
+   "element": "Carbon",
+   "mass": 12,
+   "neutrons": 6,
+   "shells": [
+    2,
+    4
+   ]
+  },
+  "info": {
+   "Shell 1": "Electron shell 1: 2 electrons here, out of the 2 it can hold.",
+   "Shell 2": "Electron shell 2: 4 electrons here, out of the 8 it can hold. The outermost shell's electrons are the ones that form bonds.",
+   "Nucleus": "The tiny, dense centre of the atom, holding nearly all of its mass.",
+   "Protons": "Positively charged; their number (the atomic number) decides which element it is.",
+   "Neutrons": "No charge; they hold the nucleus together with the protons."
+  },
+  "facts": [
+   "Atomic number 6: 6 protons, 6 neutrons (the most common isotope, C-12)",
+   "Electron shells: 2, 4",
+   "Drawn as the Bohr model: electrons really sit in clouds of probability, not on rings."
+  ],
+  "exact": true,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Nucleus",
+   "Protons",
+   "Neutrons",
+   "Shell 1",
+   "Shell 2"
+  ],
+  "kicker": "3D model",
+  "library": true
+ },
+ {
+  "title": "Water Molecule",
+  "summary": "H2O.",
+  "explanation": "A water molecule is one oxygen atom bonded to two hydrogen atoms, bent at about 104.5 degrees. Oxygen pulls the shared electrons toward itself, so the molecule is slightly charged at each end, which is why water dissolves so many things.",
+  "generator": "molecule",
+  "question": "",
+  "params": {
+   "name": "Water",
+   "atoms": [
+    [
+     "O",
+     0,
+     0,
+     0
+    ],
+    [
+     "H",
+     0.7565922909390551,
+     -0.5863445619186659,
+     0
+    ],
+    [
+     "H",
+     -0.7565922909390551,
+     -0.5863445619186659,
+     0
+    ]
+   ],
+   "bonds": [
+    [
+     0,
+     1,
+     1
+    ],
+    [
+     0,
+     2,
+     1
+    ]
+   ],
+   "formula": "H2O"
+  },
+  "info": {
+   "Hydrogen": "Hydrogen atoms (white): each shares its one electron with a neighbour in a covalent bond.",
+   "Oxygen": "Oxygen atoms (red): each forms two bonds in total and keeps two lone pairs of electrons.",
+   "Bonds": "Shared pairs of electrons holding the atoms together; two sticks show a double bond, three a triple bond."
+  },
+  "facts": [
+   "Geometry: bent, H-O-H angle 104.5 degrees, O-H 0.96 angstrom"
+  ],
+  "exact": true,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Hydrogen",
+   "Oxygen",
+   "Bonds"
+  ],
+  "kicker": "3D model",
+  "library": true
+ },
+ {
+  "title": "Sunflower",
+  "summary": "A composite flower head.",
+  "explanation": "A sunflower head is not one flower but up to about 2,000 tiny florets, packed in spirals that follow the golden angle. The yellow ray florets round the edge attract bees; the disc florets in the middle become the seeds.",
+  "generator": "flower",
+  "question": "",
+  "params": {
+   "petals": 34,
+   "layers": 2,
+   "petal_color": "#f6c21c",
+   "center_color": "#4a2d16",
+   "petal_shape": "long",
+   "leaves": 2,
+   "composite": true,
+   "cutaway": false
+  },
+  "info": {
+   "Petal": "The coloured leaves of the flower; their colour and scent attract pollinators such as bees.",
+   "Sepal": "The small leaf-like parts under the petals that protected the flower while it was a bud.",
+   "Stamen": "The male part of the flower: a filament topped by an anther.",
+   "Anther": "The tip of a stamen, where pollen is made.",
+   "Filament": "The thin stalk that holds an anther up where pollinators brush against it.",
+   "Pistil": "The female part of the flower: stigma, style and ovary together.",
+   "Stigma": "The sticky top of the pistil that catches pollen: pollination is pollen landing here.",
+   "Style": "The tube a pollen grain grows down to reach the ovary.",
+   "Ovary": "Holds the ovules; once fertilised they become seeds, and the ovary becomes the fruit.",
+   "Receptacle": "The top of the stem that all the parts of the flower grow from.",
+   "Stem": "Holds the flower up and carries water and nutrients between the roots and the leaves.",
+   "Leaf": "Makes food for the plant from sunlight, water and carbon dioxide (photosynthesis)."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Petal",
+   "Sepal",
+   "Stamen",
+   "Anther",
+   "Filament",
+   "Pistil",
+   "Stigma",
+   "Style",
+   "Ovary",
+   "Receptacle",
+   "Stem",
+   "Leaf"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Rose",
+  "summary": "A single flower.",
+  "explanation": "A rose's petals attract pollinators, its stamens make pollen, and its pistil in the middle receives pollen and grows the seeds in the rose hip.",
+  "generator": "flower",
+  "question": "",
+  "params": {
+   "petals": 30,
+   "layers": 3,
+   "petal_color": "#c1121f",
+   "center_color": "#f2c94c",
+   "petal_shape": "round",
+   "leaves": 2,
+   "composite": false,
+   "cutaway": true
+  },
+  "info": {
+   "Petal": "The coloured leaves of the flower; their colour and scent attract pollinators such as bees.",
+   "Sepal": "The small leaf-like parts under the petals that protected the flower while it was a bud.",
+   "Stamen": "The male part of the flower: a filament topped by an anther.",
+   "Anther": "The tip of a stamen, where pollen is made.",
+   "Filament": "The thin stalk that holds an anther up where pollinators brush against it.",
+   "Pistil": "The female part of the flower: stigma, style and ovary together.",
+   "Stigma": "The sticky top of the pistil that catches pollen: pollination is pollen landing here.",
+   "Style": "The tube a pollen grain grows down to reach the ovary.",
+   "Ovary": "Holds the ovules; once fertilised they become seeds, and the ovary becomes the fruit.",
+   "Receptacle": "The top of the stem that all the parts of the flower grow from.",
+   "Stem": "Holds the flower up and carries water and nutrients between the roots and the leaves.",
+   "Leaf": "Makes food for the plant from sunlight, water and carbon dioxide (photosynthesis)."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Petal",
+   "Sepal",
+   "Stamen",
+   "Anther",
+   "Filament",
+   "Pistil",
+   "Stigma",
+   "Style",
+   "Ovary",
+   "Receptacle",
+   "Stem",
+   "Leaf"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Oak Tree",
+  "summary": "A broadleaf tree.",
+  "explanation": "An oak can live for many centuries. Its roots draw water from the soil, and its leaves use sunlight to turn water and carbon dioxide into sugar, giving off oxygen.",
+  "generator": "tree",
+  "question": "",
+  "params": {
+   "kind": "oak",
+   "leaf_color": "#4f8a3a"
+  },
+  "info": {
+   "Crown": "The leaves and branches at the top, where the tree makes its food from sunlight.",
+   "Branches": "Spread the leaves out to catch as much light as possible.",
+   "Trunk": "Holds the tree up and carries water up and sugars down through layers just under the bark.",
+   "Roots": "Anchor the tree and take in water and minerals from the soil."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Crown",
+   "Branches",
+   "Trunk",
+   "Roots"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Black Hole",
+  "summary": "Gravity so strong light can't escape.",
+  "explanation": "A black hole is a region where gravity is so strong that nothing, not even light, can escape past its edge, the event horizon. Gas spiralling in heats up and glows as an accretion disc.",
+  "generator": "blackhole",
+  "question": "",
+  "params": {
+   "jets": true
+  },
+  "info": {
+   "Event Horizon": "The boundary beyond which nothing, not even light, can escape.",
+   "Photon Sphere": "Where gravity bends light into orbit around the black hole; it shapes the bright ring in images.",
+   "Accretion Disk": "Gas and dust spiralling in, heated by friction until it glows.",
+   "Jets": "In some black holes, matter is flung out in narrow beams along the spin axis, close to the speed of light."
+  },
+  "facts": [],
+  "exact": false,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Event Horizon",
+   "Photon Sphere",
+   "Accretion Disk",
+   "Jets"
+  ],
+  "kicker": "3D illustration",
+  "honesty": "A simplified educational illustration, not an exact reconstruction.",
+  "library": true
+ },
+ {
+  "title": "Gear Train",
+  "summary": "Three meshing gears.",
+  "explanation": "Meshing gears trade speed for turning force: a small gear driving a big one turns it more slowly but more strongly, and each pair turns in opposite directions.",
+  "generator": "gears",
+  "question": "",
+  "params": {
+   "teeth": [
+    12,
+    24,
+    36
+   ]
+  },
+  "info": {
+   "Gear 1": "The driving gear, with 12 teeth.",
+   "Gear 2": "24 teeth: it turns 0.50 times for each turn of the first gear, the other way round.",
+   "Gear 3": "36 teeth: it turns 0.33 times for each turn of the first gear, the same way round."
+  },
+  "facts": [
+   "Gear ratio 36:12 = 3.00: the last gear turns 0.33 times for each turn of the first, the same way round"
+  ],
+  "exact": true,
+  "same_model": false,
+  "focus": [],
+  "part_names": [
+   "Gear 1",
+   "Gear 2",
+   "Gear 3"
+  ],
+  "kicker": "3D model",
+  "library": true
+ }
+]

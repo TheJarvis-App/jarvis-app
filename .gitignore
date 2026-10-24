@@ -55,3 +55,10 @@ models/
 coding_history.json
 code_backups/
 graphify-out/
+coding_chats/
+coding_prefs.json
+coding_audit.log*
+coding_history_removed.json
+
+# a marker the engine writes after asking macOS for Accessibility once (local, per computer)
+accessibility-asked

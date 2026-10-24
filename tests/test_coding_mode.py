@@ -33,12 +33,13 @@ def fresh(monkeypatch, tmp_path):
     monkeypatch.setenv("CODE_PROJECTS_DIR", str(tmp_path / "projects"))
     monkeypatch.setattr(app.coder, "HISTORY_FILE", str(tmp_path / "history.json"))
     monkeypatch.setattr(app.coder, "BACKUP_DIR", str(tmp_path / "backups"))
-    app.code_state.update(open=False, job=None, project=None, busy=False, at=0.0)
+    monkeypatch.setattr(app.code_chat, "CHATS_DIR", str(tmp_path / "chats"))
+    app.code_state.update(open=False, job=None, project=None, busy=False, at=0.0, thread="", stop=None, status="")
     monkeypatch.setattr(app, "ws_loop", None)
     asked = []
 
-    def chat(messages, max_tokens):
-        user = messages[1]["content"]
+    def chat(messages, max_tokens, model=""):
+        user = messages[-1]["content"]
         asked.append(user)
         return PLAN if "Plan the smallest" in user else CHANGE if "existing project" in user else FILES
     monkeypatch.setattr(app, "_code_chat", chat)
@@ -63,7 +64,7 @@ def test_without_a_destination_jarvis_just_builds_it_and_says_where(tmp_path):
 
 def test_no_language_is_needed_the_ai_chooses_it(fresh, tmp_path):
     reply = app.handle_direct_command("make a snake game")
-    assert reply.startswith("I wrote calc: 2 files.") and "Choose the language that fits the request best" in fresh[0]
+    assert reply.startswith("I wrote calc: 2 files.") and "Choose the technology yourself" in fresh[0] and "never the default" in fresh[0]
     assert app.code_state["job"].language == "Python"                 # what the AI's plan said, shown as it is
 
 
@@ -160,19 +161,23 @@ def test_the_window_gets_what_it_needs_to_draw_itself(monkeypatch):
     sent = window(monkeypatch)
     app.coding_window_says({"type": "code_info"})
     info = sent[-1]["data"]
-    assert sent[-1]["type"] == "coding_info" and len(info["languages"]) >= 30 and info["model"] == app.code_model_name()
+    info = next(m["data"] for m in sent if m["type"] == "coding_info")
+    assert info["model"] == app.code_model_name() and any(m["type"] == "coding_threads" for m in sent)
     assert [d["key"] for d in info["destinations"]] == ["vscode", "local", "word", "notes", "gdrive", "zip"]
     assert all(d["available"] or d["why"] for d in info["destinations"])   # a place that can't be used says why
 
 
-def test_the_form_is_only_a_description_and_progress_is_real(monkeypatch, tmp_path):
+def test_a_chat_message_builds_the_project_and_progress_is_real(monkeypatch, tmp_path):
     sent = window(monkeypatch)
-    app.coding_window_says({"type": "code_start", "request": "a calculator for the command line"})
+    monkeypatch.setattr(app, "_route_ask", lambda prompt: '{"action": "create"}')
+    app.coding_send("", "a calculator for the command line")
     phases = [m["data"]["phase"] for m in sent if m["type"] == "coding"]
     assert phases[0] == "planning" and "writing" in phases and "checking" in phases and phases[-1] == "done"
     assert (tmp_path / "projects" / "calc" / "calc.py").exists() and not sandbox.actions   # made, nothing opened
-    app.coding_window_says({"type": "code_start", "request": "x"})
-    assert sent[-1] == {"type": "coding_note", "message": "Say what to build, in a sentence or two."}
+    thread = app.code_chat.load(app.code_state["thread"])
+    assert [m["role"] + ":" + m["kind"] for m in thread["messages"]] == ["user:text", "jarvis:work", "jarvis:result"]
+    assert thread["path"] == str(tmp_path / "projects" / "calc") and thread["messages"][1]["job"]["phase"] == "done"
+    assert not app.code_state["busy"]
 
 
 def test_the_window_reads_a_file_but_only_inside_the_project(monkeypatch, tmp_path):

@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="weather/weather.css" />
   <link rel="stylesheet" href="clock/worldclock.css" />
   <link rel="stylesheet" href="coding/coding.css" />
+  <link rel="stylesheet" href="projector/projector.css" />
   <!-- The new look, layered over style.css while <html data-ui="next">. Settings has "Classic look" to go back
        (remembered on this computer); index.html?ui=classic opens the classic look once. -->
   <link rel="stylesheet" href="style.next.css" />
@@ -50,6 +51,7 @@
           <span id="phoneChipText">Phone</span>
         </span>
         <button type="button" class="setup-chip" id="setupChip" hidden title="Show the AI setup">AI setup</button>
+        <button type="button" class="setup-chip proj-open" id="projOpenBtn" title="The 3D projector: every model you've seen, and a library to explore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8 20 7.4v9.2l-8 4.6-8-4.6V7.4z"/><path d="M4 7.4 12 12l8-4.6M12 12v9.2"/></svg>3D models</button>
         <button type="button" class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
         </button>
@@ -261,6 +263,52 @@
     </div>
   </div>
 
+  <!-- the 3D projector (projector/projector.js): the answer above, the model in a holographic projector below -->
+  <div class="earth-layer proj-layer" id="projLayer" hidden role="dialog" aria-modal="true" aria-labelledby="projTitle">
+    <div class="earth-card proj-card" id="projCard">
+      <header class="graph-head">
+        <div class="graph-heading"><p class="graph-kicker" id="projKicker">3D model</p><h2 id="projTitle"></h2><p class="proj-summary" id="projSummary"></p></div>
+        <div class="head-actions"><span class="graph-nav" id="projNav" hidden><button class="ghost" id="projPrev" type="button" title="Previous model">‹</button><span id="projCount">1 / 1</span><button class="ghost" id="projNext" type="button" title="Next model">›</button></span><button class="ghost proj-gallery-btn" id="projGalleryBtn" type="button" aria-pressed="false" aria-controls="projGallery" title="Every model you've seen, and a library to explore"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>All models</button><button class="ghost" id="projClose" type="button" title="Close (Esc)">Close</button></div>
+      </header>
+      <div class="proj-gallery" id="projGallery" hidden role="region" aria-label="3D models">
+        <section><h3>Your models</h3><p class="proj-gallery-empty" id="projRecentEmpty">Nothing yet. Ask Jarvis “show me a dog”, or open one from the library.</p><div class="proj-grid" id="projRecent"></div></section>
+        <section><div class="proj-gallery-head"><h3>Library</h3><div class="proj-filters" id="projFilters" role="group" aria-label="Show"></div></div><div class="proj-grid" id="projLibrary"></div></section>
+      </div>
+      <div class="proj-info">
+        <div class="proj-detail" aria-live="polite"><h3 id="projPartName"></h3><p id="projPartText"></p></div>
+        <div class="proj-side">
+          <ul class="proj-facts" id="projFacts" hidden></ul>
+          <p class="proj-honesty" id="projHonesty" hidden></p>
+        </div>
+        <div class="proj-parts" id="projParts" role="group" aria-label="Parts: pick one to learn what it does"></div>
+      </div>
+      <div class="proj-stage" id="projStage">
+        <canvas id="projCanvas" aria-label="An interactive 3D model. Drag to turn it, scroll to zoom; pick a part to learn about it."></canvas>
+        <div class="proj-labels" id="projLabels"></div>
+        <p class="proj-hud" id="projHud" aria-live="off"></p>
+        <div class="proj-loading" id="projLoading" hidden><span class="proj-loader" aria-hidden="true"></span>Projecting…</div>
+        <div class="proj-controls" id="projControls" role="toolbar" aria-label="Model controls">
+          <button type="button" data-act="reset" title="Reset the view (R)">Reset</button>
+          <button type="button" data-act="rotate" aria-pressed="true" title="Turn slowly on its own">Auto-rotate</button>
+          <button type="button" data-act="labels" aria-pressed="true" title="Show or hide labels (L)">Labels</button>
+          <span class="proj-sep" aria-hidden="true"></span>
+          <button type="button" data-act="front" title="Look from the front">Front</button>
+          <button type="button" data-act="side" title="Look from the side">Side</button>
+          <button type="button" data-act="top" title="Look from above">Top</button>
+          <span class="proj-sep" aria-hidden="true"></span>
+          <button type="button" data-act="explode" aria-pressed="false" hidden title="Spread the parts apart">Exploded view</button>
+          <button type="button" data-act="cutaway" aria-pressed="false" hidden title="Open it to see inside">Inside</button>
+          <button type="button" data-act="play" aria-pressed="true" hidden title="Play or pause (Space)">Pause</button>
+          <button type="button" data-act="replay" hidden title="Draw it in again">Replay</button>
+          <span class="proj-sep" aria-hidden="true"></span>
+          <button type="button" data-act="zoomout" aria-label="Zoom out" title="Zoom out (−)">−</button>
+          <button type="button" data-act="zoomin" aria-label="Zoom in" title="Zoom in (+)">+</button>
+          <button type="button" data-act="full" aria-pressed="false" title="Full screen">Full screen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Full-size image">
     <img id="lightboxImg" alt="" />
   </div>
@@ -364,12 +412,14 @@
     </div>
   </template>
 
+  <script src="keys.js"></script>
   <script src="orb.js"></script>
   <script src="bg.js"></script>
   <script src="graph.js"></script>
   <script src="sphere_gl.js"></script>
   <script src="earth.js"></script>
   <script src="planet.js"></script>
+  <script src="projector/projector.js"></script>
   <script src="renderer.js"></script>
   <script src="panels.js"></script>
   <script src="weather/icons.js"></script>

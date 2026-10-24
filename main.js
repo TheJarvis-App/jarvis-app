@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, session, systemPreferences, Tray, Menu, nat
 const fs = require('fs');
 const path = require('path');
 const { Backend } = require('./backend');
+const { QuickAccess } = require('./quick');
 
 // Jarvis was called Jervis before: an installed copy takes over its old data folder (settings, phone pairings,
 // logs, downloaded models) before anything uses it — a rename on the same disk, nothing copied. If that can't be
@@ -23,6 +24,7 @@ let tray = null;
 let quitting = false;
 let backend = null;
 let backendState = { state: 'starting', detail: '' };
+let quick = null;   // the Quick Access bar (quick.js)
 
 // ---------- Main-process log (next to the backend's own log) ----------
 function logFile() {
@@ -62,7 +64,7 @@ function setBackendState(state, detail = '') {
   if (state !== 'running' && controlActive()) {   // the engine went away mid-task: so did the task
     setControlState({ ...controlState, state: 'stopped', detail: 'Jarvis’s engine stopped, so computer control stopped.' });
   }
-  if (state === 'port-changed' && win) { loadPage(); return; }
+  if (state === 'port-changed' && win) { loadPage(); quick?.reload(); return; }
   if (win && !win.isDestroyed()) win.webContents.send('backend-state', backendState);
 }
 
@@ -113,6 +115,7 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     win.webContents.send('backend-state', backendState);
     win.webContents.send('window-visibility', win.isVisible());
+    win.webContents.send('fullscreen-state', win.isFullScreen());   // a reloaded page starts in step with the window
   });
 }
 
@@ -338,6 +341,7 @@ function createTray() {
   tray.setToolTip('Jarvis: say “Hey Jarvis”');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Show Jarvis', click: showWindow },
+    { label: 'Quick Access', click: () => quick?.show('the tray') },
     { label: 'Restart Jarvis’s engine', click: () => backend && backend.restart('tray menu') },
     { type: 'separator' },
     { label: 'Quit Jarvis (stops listening for “Hey Jarvis”)', click: () => { quitting = true; app.quit(); } },
@@ -364,6 +368,10 @@ app.whenReady().then(async () => {
   }
   createWindow();
   createTray();
+  quick = new QuickAccess({ dataDir: app.isPackaged ? app.getPath('userData') : __dirname, wsUrl: () => backend.url, log, showMain: showWindow, mainWindow: () => win });
+  quick.start();
+  // started by holding ⌘ while Jarvis was closed (Jarvis Wake, wake/jarvis_wake.py): open the bar, not the window
+  if (process.env.JARVIS_QUICK_OPEN === '1') { delete process.env.JARVIS_QUICK_OPEN; quick.show('hold-command, Jarvis started'); }
   applyStartAtLogin();
   // (started with --hidden, at sign-in: the window stays hidden and Jarvis listens quietly until "Hey Jarvis")
 });

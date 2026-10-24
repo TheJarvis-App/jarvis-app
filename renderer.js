@@ -121,7 +121,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   // ---------- Timer alert: a square card with a soft, repeating chime ----------
   const { ipcRenderer } = require('electron');
-  ipcRenderer.on('fullscreen-state', (_event, on) => app.classList.toggle('is-full', on));
+  ipcRenderer.on('fullscreen-state', (_event, on) => {   // the window's real state (sent on every change and on every page load)
+    app.classList.toggle('is-full', on);
+    document.documentElement.classList.toggle('is-full', on);
+  });
   const alerts = [];
   let audioCtx = null;
   let chimeTimer = null;
@@ -207,11 +210,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     dismissAlert();
   });
-  const typing = (e) => e.target && e.target.tagName === 'INPUT';   // shortcuts must not fire while typing
+  const keys = window.jarvisKeys;   // keys.js: which key, whatever the keyboard layout, and never while typing
+  const typing = (e) => keys.typing(e);
   document.addEventListener('keydown', (e) => {
     if (!alerts.length || typing(e)) return;
     if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); dismissAlert(); }
-    if (e.key.toLowerCase() === 's' && !e.metaKey && !e.ctrlKey) $('alertSnooze').click();
+    if (keys.is(e, 's') && keys.plain(e)) $('alertSnooze').click();
   });
 
   // ---------- Timers ----------
@@ -653,6 +657,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.type === 'planet' && data.data) { window.showPlanet?.(data.data); queuePlanetChip(data.data); }
       if (data.type === 'show_planet') window.reopenPlanet?.(data.which || 'last');
       if (data.type === 'close_planet') window.hidePlanet?.();
+      if (data.type === 'projector' && data.data) window.showProjector?.(data.data);
+      if (data.type === 'close_projector') window.hideProjector?.();
       if (data.type === 'timers') setTimers(data.data);
       if (data.type === 'timer_done' && data.data) showAlert(data.data);
       if (data.type === 'dismiss_alert' && alerts.length) dismissAlert(alerts.length);
@@ -764,7 +770,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('keydown', (e) => {
     if (typing(e)) return;
-    if (e.key.toLowerCase() === 'f' && !alerts.length && !e.metaKey && !e.ctrlKey && !e.altKey) {   // F: full screen on/off
+    if (!alerts.length && keys.shortcut(e, 'f', { inModal: true })) {   // F: full screen on/off (in Coding Mode too)
       e.preventDefault();
       ipcRenderer.send('window-fullscreen', 'toggle');
       return;
@@ -773,18 +779,17 @@ document.addEventListener('DOMContentLoaded', () => {
       ipcRenderer.send('window-fullscreen', false);
       return;
     }
-    if (e.key === '/' && !alerts.length && !e.metaKey && !e.ctrlKey && !e.altKey) {   // "/" jumps to the typing box
+    if (!alerts.length && keys.shortcut(e, '/')) {   // "/" jumps to the typing box ("." on a Hebrew keyboard: the same key)
       e.preventDefault();
       $('typeInput').focus();
       return;
     }
-    if (e.key === ' ' && app.dataset.state === 'speaking' && !alerts.length) {
+    if (e.key === ' ' && app.dataset.state === 'speaking' && !alerts.length && !keys.modal()) {
       e.preventDefault();
       interruptSpeech();
       return;
     }
-    if (e.metaKey || e.ctrlKey || e.altKey || e.repeat || alerts.length) return;
-    if (e.key.toLowerCase() === 'm') applyMute(!isMuted);
+    if (!alerts.length && keys.shortcut(e, 'm')) applyMute(!isMuted);
   });
 
   const typeInput = $('typeInput');

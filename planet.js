@@ -8,8 +8,9 @@
   const REVEAL_SECONDS = 1.1;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // A plain, textureless look for a body with no imagery yet (Earth reuses the real distance-globe window instead;
-  // Pluto has no bundled texture), coloured roughly to how that kind of body actually looks.
+  // A plain, textureless look for a body with no imagery yet (Earth reuses the real distance-globe window instead),
+  // coloured roughly to how that kind of body actually looks. Pluto has a map now: NASA's New Horizons colour mosaic
+  // (public domain), with the southern part New Horizons never saw filled in Pluto's own average tone.
   const PLAIN_COLOR = { star: [255, 214, 130], rock: [176, 158, 140], gas: [214, 189, 152], ice: [162, 196, 214], earth: [90, 140, 200] };
 
   let texture = null, textureKey = null, ringAlpha = null;
@@ -396,11 +397,11 @@
     $('planetNext').addEventListener('click', () => window.reopenPlanet('next'));
     $('planetLayer').addEventListener('mousedown', (e) => { if (e.target === $('planetLayer')) window.hidePlanet(); });
     document.addEventListener('keydown', (e) => {
-      if (e.target && e.target.tagName === 'INPUT') return;
+      if (window.jarvisKeys.typing(e)) return;
       if (e.key === 'Escape' && window.planetOpen()) { e.preventDefault(); window.hidePlanet(); }
       else if (e.key === 'ArrowLeft' && window.planetOpen()) { e.preventDefault(); window.reopenPlanet('prev'); }
       else if (e.key === 'ArrowRight' && window.planetOpen()) { e.preventDefault(); window.reopenPlanet('next'); }
-      else if (e.key.toLowerCase() === 'p' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat) {
+      else if (window.jarvisKeys.shortcut(e, 'p')) {   // P: show / hide the last planet
         e.preventDefault();
         window.planetOpen() ? window.hidePlanet() : window.reopenPlanet('last');
       }

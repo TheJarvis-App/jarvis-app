@@ -196,10 +196,57 @@ def test_time_greeting_uses_the_users_name_once_set(monkeypatch):
     assert app.time_greeting().startswith("Good ") and ", Ariel." in app.time_greeting()
 
 
-@pytest.mark.parametrize("said", ["goodbye jarvis", "bye jarvis", "have a good day jarvis", "goodbye", "bye",
-                                  "have a good day", "have a nice day"])
-def test_farewell_phrases_put_him_to_sleep(said):
-    assert app.is_shutdown_command(said)
+@pytest.mark.parametrize("said", ["go to sleep", "Jarvis, go to sleep", "go to sleep mode", "sleep mode", "sleep",
+                                  "you can go to sleep now", "time to go to sleep", "Jarvis sleep", "go back to sleep",
+                                  "please go to sleep jarvis", "enter sleep mode"])
+def test_only_asking_him_to_sleep_puts_him_to_sleep(said):
+    assert app.is_sleep_command(said) and not app.is_farewell(said)
+
+
+@pytest.mark.parametrize("said", ["goodbye jarvis", "bye jarvis", "have a good day jarvis", "goodbye", "bye", "have a good day",
+                                  "have a nice day", "goodnight jarvis", "thank you bye", "see you later", "I'm going to sleep"])
+def test_a_goodbye_is_answered_but_never_puts_him_to_sleep(said):
+    """Videos, songs and the room say these too: Jarvis kept falling asleep when nobody had asked him to."""
+    assert app.is_farewell(said) and not app.is_sleep_command(said)
+
+
+@pytest.mark.parametrize("said", ["put the computer to sleep", "set a sleep timer for 30 minutes", "how much sleep do I need",
+                                  "play sleep music", "I couldn't sleep last night"])
+def test_other_sentences_about_sleep_are_not_for_him(said):
+    assert not app.is_sleep_command(said)
+
+
+def run_loop(monkeypatch, lines):
+    """Jarvis's real main loop, with typed lines in and what he says out."""
+    import queue
+
+    class Done(Exception):
+        pass
+    feed = queue.Queue()
+    for line in lines:
+        feed.put(line)
+    spoken = []
+    monkeypatch.setattr(app, "typed_inputs", feed)
+    monkeypatch.setattr(app, "listen", lambda passive=False: (_ for _ in ()).throw(Done()))
+    monkeypatch.setattr(app, "speak", spoken.append)
+    monkeypatch.setattr(app, "broadcast", lambda *a, **k: None)
+    monkeypatch.setattr(app, "send_status", lambda status: None)
+    monkeypatch.setattr(app, "handle_command", lambda text, typed=False: None)
+    monkeypatch.setattr(app, "understand_language", lambda text, typed=False: text)
+    monkeypatch.delenv("JARVIS_WAKE_WORD", raising=False)
+    app.awake = True
+    with pytest.raises(Done):
+        app.main_loop()
+    return spoken
+
+
+def test_in_the_real_loop_a_goodbye_keeps_him_awake_and_go_to_sleep_doesnt(monkeypatch):
+    monkeypatch.setattr(app, "_farewell_hint_said", [False])
+    spoken = run_loop(monkeypatch, ["goodbye", "have a good day jarvis"])
+    assert app.awake is True
+    assert spoken == ["Goodbye! I'll stay here; say “go to sleep” when you want me to sleep.", "You too, have a great day!"]
+    spoken = run_loop(monkeypatch, ["Jarvis, go to sleep"])
+    assert app.awake is False and spoken == ["Going to sleep. Say “Hey Jarvis” when you want me."]
 
 
 @pytest.mark.parametrize("said", ["hello", "hi there", "hey", "this is a hint", "I said hello to my brother"])
@@ -330,27 +377,43 @@ def test_take_control_and_spotify_is_done_visibly_step_by_step(said, monkeypatch
     app.computer_task = None
 
 
-def test_take_control_stays_visible_even_with_spotify_keys_configured(monkeypatch):
-    """With Spotify developer keys set up (Settings, Optional services), an ordinary "play X on Spotify" uses the
-    fast online API — but "take control ... and play X on Spotify" asked explicitly to watch it happen, so it must
-    still go through the mouse-and-keyboard flow, never silently answer through the API instead."""
+def test_take_control_with_spotify_keys_plays_the_exact_thing_visibly(monkeypatch):
+    """With Spotify keys, "take control … and play my favorite songs playlist on Spotify" is still done in view:
+    Spotify comes to the front, the playlist's own page opens in it, and the app plays it. Spotify's API is only asked
+    *which* playlist that is (the user's own), and whether that exact one is playing before it's called done.
+    (The keyboard search it replaced could not play anything: Shift+Enter does nothing in current Spotify.)"""
     import time
     from types import SimpleNamespace
     import spotify_local
-    fake_sp = SimpleNamespace(search=lambda **k: (_ for _ in ()).throw(AssertionError("the online API was called")))
-    monkeypatch.setattr(app, "sp", fake_sp)
+    uri = "spotify:playlist:4Scv"
+    playing = {"now": None}
+    library = SimpleNamespace(current_user_playlists=lambda limit, offset: {"items": [{"name": "My favorite songs", "uri": uri}], "next": None},
+                              current_playback=lambda: {"is_playing": True, "context": {"uri": playing["now"]}, "item": {"uri": "spotify:track:x"}})
+    monkeypatch.setattr(app, "sp", SimpleNamespace(search=lambda **k: (_ for _ in ()).throw(AssertionError("searched instead of the library"))))
+    monkeypatch.setattr(app, "spotify_library", lambda: library)
     monkeypatch.setenv("JARVIS_COMPUTER_CONTROL", "on")
     monkeypatch.setattr(app, "computer_environment", lambda: SimpleNamespace(available=lambda: (True, "")))
     monkeypatch.setattr(spotify_local, "time", SimpleNamespace(sleep=lambda s: None, time=time.time))
+    monkeypatch.setattr(spotify_local, "now_playing", lambda: (True, "Enjoy the Silence by Depeche Mode"))
+    monkeypatch.setattr(spotify_local, "IS_MAC", True)
+    played = []
+
+    def osa(command, timeout=8.0):
+        played.append(command)
+        playing["now"] = uri   # the app's own play command starts it
+        return ""
+    monkeypatch.setattr(spotify_local, "_osa", osa)
     monkeypatch.setattr(app, "send_ui_update_once", lambda payload: None)
-    result, actions = route("take control on my computer and play Jane! on spotify")
-    assert "I'm using the computer to play Jane! on Spotify" in result
+    result, actions = route('take control on my computer and play "My favorite songs" playlist on spotify')
+    assert "I'm using the computer to play My favorite songs on Spotify" in result
     for _ in range(200):
         if app.computer_task is not None and app.computer_task.state in ("completed", "error", "stopped"):
             break
         time.sleep(0.02)
     actions = plain(sandbox.actions)
-    assert "front" in actions and f"keys {MOD}+k" in actions
+    assert "front" in actions and any(uri in a for a in actions)          # brought forward, its page opened in the app
+    assert played == [f'play track "{uri}"'] and app.computer_task.state == "completed"
+    assert "Playing your playlist My favorite songs on Spotify (now: Enjoy the Silence by Depeche Mode)." in app.computer_task.result
     app.computer_task = None
 
 

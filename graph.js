@@ -550,11 +550,11 @@
     $('graphNext').addEventListener('click', () => window.reopenGraph('next'));
     $('graphLayer').addEventListener('mousedown', (e) => { if (e.target === $('graphLayer')) window.hideGraph(); });
     document.addEventListener('keydown', (e) => {
-      if (e.target && e.target.tagName === 'INPUT') return;
+      if (window.jarvisKeys.typing(e)) return;
       if (e.key === 'Escape' && window.graphOpen()) { e.preventDefault(); window.hideGraph(); }
       else if (e.key === 'ArrowLeft' && window.graphOpen()) { e.preventDefault(); window.reopenGraph('prev'); }
       else if (e.key === 'ArrowRight' && window.graphOpen()) { e.preventDefault(); window.reopenGraph('next'); }
-      else if (e.key.toLowerCase() === 'g' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat) {   // G: show / hide the last graph
+      else if (window.jarvisKeys.shortcut(e, 'g')) {   // G: show / hide the last graph
         e.preventDefault();
         window.graphOpen() ? window.hideGraph() : window.reopenGraph('last');
       }

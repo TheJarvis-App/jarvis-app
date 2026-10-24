@@ -35,7 +35,7 @@ def test_env_file_is_imported_once_and_keeps_online_ai(fresh):
     settings.load()
     stored = json.loads((data / "settings.json").read_text())["values"]
     assert stored["GROQ_API_KEY"] == "gsk_test_value_1234"   # inline comment stripped
-    assert stored["LLM_BACKEND"] == "auto"                    # someone with a key keeps the online AI
+    assert stored["LLM_BACKEND"] == "groq"                    # someone with a key keeps the online AI, light
     assert os.environ["WHATSAPP_READING"] == "off"
 
 

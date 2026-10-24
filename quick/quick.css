@@ -1,0 +1,313 @@
+/* The Quick Access bar. On a Mac it hangs from the menu bar: a black top that joins the bar (and the notch), curving
+   out into it at both shoulders, unfolding downward. On Windows it's a floating card a little below the top of the
+   screen. Same Jarvis core, colours and type on both. */
+:root {
+  --accent: 79 216 255;
+  --blue: 72 122 255;
+  --violet: 165 139 255;
+  --text: #ecf4ff;
+  --muted: rgb(220 232 255 / .56);
+  --faint: rgb(220 232 255 / .34);
+  --line: rgb(255 255 255 / .075);
+  --margin: 26px;
+  --radius: 22px;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+  --ease: cubic-bezier(.16, 1, .3, 1);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; overflow: hidden; }
+body { font: 14px/1.5 var(--sans); color: var(--text); -webkit-font-smoothing: antialiased; user-select: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.stage { padding: var(--top, 0px) var(--margin) var(--margin); }
+
+/* ---------- the surface ---------- */
+.bar {
+  position: relative; isolation: isolate; border-radius: 0 0 var(--radius) var(--radius);
+  background:
+    radial-gradient(120% 70% at 50% 120%, rgb(var(--accent) / .07), transparent 60%),
+    linear-gradient(180deg, #000 0, #000 8px, rgb(8 11 20 / .985) 36px, rgb(7 10 19 / .99) 100%);
+  box-shadow: 0 22px 44px -18px rgb(0 0 0 / .8), 0 8px 18px -10px rgb(0 0 0 / .6);
+}
+/* a hairline down the sides and along the bottom, fading out toward the menu bar */
+.bar::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; padding: 1px;
+  background: linear-gradient(180deg, transparent 0, rgb(255 255 255 / .05) 30px, rgb(255 255 255 / .1) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+}
+/* the shoulders: the bar's top curves out into the menu bar, so it grows out of it rather than sitting under it */
+.shoulder { position: absolute; top: 0; width: 14px; height: 14px; pointer-events: none; }
+.shoulder.left { left: -14px; background: radial-gradient(circle at 0 100%, transparent 13.5px, #000 14px); }
+.shoulder.right { right: -14px; background: radial-gradient(circle at 100% 100%, transparent 13.5px, #000 14px); }
+/* the light along the bottom edge: the state's colour */
+.edge {
+  position: absolute; left: 14%; right: 14%; bottom: 0; height: 1px; pointer-events: none; opacity: .55;
+  background: linear-gradient(90deg, transparent, rgb(var(--accent) / .9) 30%, rgb(var(--violet) / .9) 70%, transparent);
+  box-shadow: 0 0 14px 1px rgb(var(--accent) / .35); transition: opacity .3s, left .4s var(--ease), right .4s var(--ease);
+}
+.edge::after { content: ""; position: absolute; left: 10%; right: 10%; top: 0; height: 18px; background: radial-gradient(50% 100% at 50% 0, rgb(var(--accent) / .16), transparent); filter: blur(6px); }
+
+/* Windows: a floating card with all four corners rounded, no shoulders */
+body[data-platform="win"] { --radius: 16px; }
+body[data-platform="win"] .bar {
+  border-radius: var(--radius);
+  background: radial-gradient(120% 80% at 50% 0, rgb(var(--accent) / .06), transparent 60%), linear-gradient(180deg, rgb(20 25 38 / .99), rgb(12 15 26 / .99));
+  box-shadow: 0 24px 48px -16px rgb(0 0 0 / .7), 0 2px 8px rgb(0 0 0 / .35);
+}
+body[data-platform="win"] .bar { border-radius: 0 0 var(--radius) var(--radius); }
+body[data-platform="win"] .bar::after { background: linear-gradient(180deg, transparent, rgb(255 255 255 / .08) 24px, rgb(255 255 255 / .12)); }
+body[data-platform="win"] .shoulder.left { background: radial-gradient(circle at 0 100%, transparent 13.5px, rgb(20 25 38) 14px); }
+body[data-platform="win"] .shoulder.right { background: radial-gradient(circle at 100% 100%, transparent 13.5px, rgb(20 25 38) 14px); }
+
+/* ---------- the top edge ---------- */
+/* Mac: the neck fills the notch exactly (black on black hardware: unseen), so the bar is the notch, grown. Without a
+   notch it's Jarvis's own small notch in the middle of the menu bar, only while open. Its feet curve out into the bar. */
+.neck { position: absolute; top: 0; left: var(--neck-x); width: var(--neck-w); height: calc(var(--top) + 1px); background: #000; pointer-events: none; z-index: 2; border-radius: 0 0 2px 2px; }
+.neck[hidden] { display: none; }
+.neck::before, .neck::after { content: ""; position: absolute; bottom: 1px; width: 10px; height: 10px; }
+.neck::before { left: -10px; background: radial-gradient(circle at 0 0, transparent 9.5px, #000 10px); }
+.neck::after { right: -10px; background: radial-gradient(circle at 100% 0, transparent 9.5px, #000 10px); }
+body.virtual-neck .neck { border-radius: 0 0 12px 12px; }
+/* where the menu bar meets the bar: its last few pixels (padding below the menu and status items, never the items
+   themselves) darken into the bar's black, feathered at both ends, so there's no hard line between the two */
+.blend { display: none; position: absolute; top: calc(var(--top) - 7px); height: 7px; left: calc(var(--margin) - 14px); right: calc(var(--margin) - 14px);
+  pointer-events: none; z-index: 1; background: linear-gradient(180deg, transparent, rgb(0 0 0 / .55) 55%, #000);
+  -webkit-mask: linear-gradient(90deg, transparent, #000 60px, #000 calc(100% - 60px), transparent); }
+body.has-neck .blend { display: block; }
+body.open .blend { animation: fade .3s .14s both; }
+body.closing .blend { animation: fade-out .16s both; }
+/* Windows: a line of light along the top edge of the screen, where the bar hangs from */
+.rail { display: none; position: absolute; left: 0; right: 0; top: 0; height: 2px; z-index: 3; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgb(var(--accent) / .9) 25%, rgb(var(--violet)) 50%, rgb(var(--accent) / .9) 75%, transparent);
+  box-shadow: 0 0 12px rgb(var(--accent) / .55); }
+body[data-platform="win"] .rail { display: block; }
+/* the spark: drops out of the notch (or off the top edge) and becomes the core */
+.spark { position: absolute; left: 0; top: 0; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; opacity: 0; pointer-events: none; z-index: 4;
+  background: radial-gradient(circle, #fff 0 30%, rgb(var(--accent)) 60%, transparent 72%); box-shadow: 0 0 14px 4px rgb(var(--accent) / .7), 0 0 30px 8px rgb(var(--violet) / .35); }
+
+/* ---------- the input row ---------- */
+.row { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 12px; padding: 14px 12px 6px 16px; }
+body[data-platform="win"] .row { padding-top: 12px; }
+textarea {
+  display: block; width: 100%; resize: none; border: 0; outline: 0; background: transparent; color: var(--text);
+  font: 400 16.5px/1.4 var(--sans); letter-spacing: -.005em; padding: 6px 0; max-height: 112px; overflow-y: auto;
+  caret-color: rgb(var(--accent)); user-select: text; scrollbar-width: none;
+}
+textarea::placeholder { color: var(--faint); }
+textarea::-webkit-scrollbar { display: none; }
+.actions { display: flex; align-items: center; gap: 2px; }
+.icon {
+  width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 11px; background: transparent;
+  color: var(--muted); cursor: pointer; transition: background-color .18s, color .18s, transform .18s var(--ease);
+}
+.icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.icon:hover { background: rgb(255 255 255 / .07); color: var(--text); }
+.icon:active { transform: scale(.94); }
+.icon:focus-visible { outline: 2px solid rgb(var(--accent) / .9); outline-offset: 1px; }
+.icon[hidden] { display: none; }
+.icon.stop svg { fill: currentColor; stroke: none; }
+.mic[aria-pressed="true"] { color: #031018; background: rgb(var(--accent)); box-shadow: 0 0 0 4px rgb(var(--accent) / .16), 0 0 18px rgb(var(--accent) / .5); }
+.mic[aria-pressed="true"]:hover { background: rgb(var(--accent)); color: #031018; }
+.mic:disabled { opacity: .35; cursor: default; }
+
+/* ---------- the Jarvis core: breathes when idle, listens, thinks, speaks ---------- */
+.core { position: relative; width: 30px; height: 30px; justify-self: center; --level: 0; }
+.core i { position: absolute; border-radius: 50%; }
+.core .halo { inset: -8px; background: radial-gradient(circle, rgb(var(--accent) / .28), transparent 65%); opacity: calc(.45 + var(--level) * .8); transform: scale(calc(.85 + var(--level) * .5)); transition: opacity .12s, transform .12s; }
+.core .ring {
+  inset: 1px; background: conic-gradient(from 0deg, rgb(var(--accent)), rgb(var(--violet)) 35%, transparent 55%, transparent 80%, rgb(var(--accent)));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.6px), #000 calc(100% - 1px));
+  animation: spin 7s linear infinite;
+}
+.core .ring.two { inset: -3px; opacity: .32; animation-duration: 11s; animation-direction: reverse; }
+.core .heart {
+  inset: 9px; background: radial-gradient(circle at 35% 30%, #fff 0, rgb(200 245 255) 18%, rgb(var(--accent)) 46%, rgb(var(--blue)) 100%);
+  box-shadow: 0 0 10px rgb(var(--accent) / .75), 0 0 2px #fff; transform: scale(calc(1 + var(--level) * .45));
+  animation: breathe 3.6s ease-in-out infinite; transition: transform .1s;
+}
+body[data-state="listening"] .core .ring { animation-duration: 2.6s; }
+body[data-state="listening"] .core .heart { animation: none; }
+body[data-state="thinking"] .core .ring { animation-duration: .9s; background: conic-gradient(from 0deg, rgb(var(--violet)), rgb(var(--accent)) 30%, transparent 50%, transparent 85%, rgb(var(--violet))); }
+body[data-state="thinking"] .core .ring.two { animation-duration: 1.6s; opacity: .55; }
+body[data-state="thinking"] .core .heart { animation: think 1.2s ease-in-out infinite; }
+body[data-state="speaking"] .core .heart { animation: speak .5s ease-in-out infinite alternate; }
+body[data-state="offline"] .core .heart { background: radial-gradient(circle at 35% 30%, #fff 0, #ffe2a8 25%, #ffb347 60%, #a0601a 100%); box-shadow: 0 0 10px rgb(255 179 71 / .6); animation: none; }
+body[data-state="offline"] .core .ring { animation-duration: 18s; opacity: .4; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes breathe { 0%, 100% { transform: scale(.92); } 50% { transform: scale(1.04); } }
+@keyframes think { 0%, 100% { transform: scale(.86); filter: hue-rotate(0deg); } 50% { transform: scale(1.02); filter: hue-rotate(35deg); } }
+@keyframes speak { from { transform: scale(.94); } to { transform: scale(1.18); } }
+
+/* ---------- the status line, and the listening wave ---------- */
+.status { display: flex; align-items: center; gap: 8px; min-height: 26px; padding: 0 18px 10px 62px; font: 500 10.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: rgb(var(--accent) / .82); }
+.status .dot { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--accent)); box-shadow: 0 0 8px rgb(var(--accent)); opacity: .8; }
+body[data-state="thinking"] .status { color: rgb(var(--violet)); }
+body[data-state="thinking"] .status .dot { background: rgb(var(--violet)); box-shadow: 0 0 8px rgb(var(--violet)); animation: blink 1s ease-in-out infinite; }
+body[data-state="offline"] .status, body[data-state="offline"] .status .dot { color: #ffc77a; background-color: transparent; }
+body[data-state="offline"] .status .dot { background: #ffb347; box-shadow: 0 0 8px #ffb347; }
+.status .hint { margin-left: auto; color: var(--faint); letter-spacing: .1em; white-space: nowrap; }
+@keyframes blink { 50% { opacity: .25; } }
+.wave { display: none; align-items: center; gap: 2.5px; height: 16px; margin-left: 6px; }
+body[data-state="listening"] .wave { display: inline-flex; }
+.wave b { display: block; width: 2.5px; height: 16px; border-radius: 2px; background: linear-gradient(180deg, rgb(var(--accent)), rgb(var(--violet))); transform: scaleY(.12); transform-origin: center; transition: transform .08s linear; }
+
+/* ---------- notices (the microphone is off, no connection) ---------- */
+.notice { display: flex; align-items: center; gap: 12px; margin: 0 14px 12px 62px; padding: 9px 12px; border-radius: 12px; background: rgb(255 179 71 / .08); border: 1px solid rgb(255 179 71 / .22); color: #ffd9a3; font-size: 12.5px; line-height: 1.4; }
+.notice[hidden] { display: none; }
+.notice button { margin-left: auto; flex-shrink: 0; border: 0; border-radius: 8px; padding: 6px 10px; background: rgb(255 179 71 / .18); color: #ffe7c4; font: 600 12px/1 var(--sans); cursor: pointer; }
+.notice button:hover { background: rgb(255 179 71 / .28); }
+
+/* ---------- the answer ---------- */
+.answer { max-height: 340px; overflow-y: auto; padding: 2px 22px 16px 62px; border-top: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / .16) transparent; user-select: text; }
+.answer[hidden] { display: none; }
+.answer::-webkit-scrollbar { width: 8px; }
+.answer::-webkit-scrollbar-thumb { background: rgb(255 255 255 / .14); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+.turn { padding-top: 12px; animation: rise .35s var(--ease) both; }
+.turn .who { display: block; margin-bottom: 3px; font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+.turn.you p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.turn.jarvis .who { color: rgb(var(--accent) / .75); }
+.turn.jarvis .body { font-size: 14.5px; line-height: 1.6; color: var(--text); }
+.turn.jarvis .body p { margin: 0 0 8px; }
+.turn.jarvis .body p:last-child { margin-bottom: 0; }
+.turn.jarvis .body ul, .turn.jarvis .body ol { margin: 4px 0 8px; padding-left: 20px; }
+.turn.jarvis .body li { margin: 2px 0; }
+.turn.jarvis .body code { font: 12.5px/1.4 var(--mono); padding: 1px 5px; border-radius: 5px; background: rgb(255 255 255 / .07); }
+.turn.jarvis .body pre { margin: 6px 0 8px; padding: 10px 12px; border-radius: 10px; background: rgb(0 0 0 / .35); border: 1px solid var(--line); overflow-x: auto; }
+.turn.jarvis .body pre code { padding: 0; background: none; }
+.turn.jarvis .body strong { color: #fff; font-weight: 600; }
+.turn img { display: block; max-width: 100%; max-height: 220px; margin-top: 6px; border-radius: 12px; border: 1px solid var(--line); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgb(var(--accent) / .3); border-radius: 999px; padding: 6px 12px; background: rgb(var(--accent) / .07); color: var(--text); font: 500 12px/1 var(--sans); cursor: pointer; transition: background-color .18s, border-color .18s; }
+.chip:hover { background: rgb(var(--accent) / .15); border-color: rgb(var(--accent) / .6); }
+.chip svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.typing { display: inline-flex; gap: 4px; padding: 6px 0 2px; }
+.typing b { width: 5px; height: 5px; border-radius: 50%; background: rgb(var(--violet)); animation: bounce 1.1s ease-in-out infinite; }
+.typing b:nth-child(2) { animation-delay: .15s; } .typing b:nth-child(3) { animation-delay: .3s; }
+@keyframes bounce { 0%, 80%, 100% { transform: translateY(0); opacity: .35; } 40% { transform: translateY(-4px); opacity: 1; } }
+
+/* ---------- states on the edge light ---------- */
+body[data-state="listening"] .edge { opacity: 1; left: 6%; right: 6%; box-shadow: 0 0 20px 2px rgb(var(--accent) / .55); }
+body[data-state="thinking"] .edge { opacity: .9; background: linear-gradient(90deg, transparent, rgb(var(--violet)), rgb(var(--accent)), rgb(var(--violet)), transparent); background-size: 200% 100%; animation: sweep 1.4s linear infinite; }
+body[data-state="speaking"] .edge { opacity: .95; animation: glow .6s ease-in-out infinite alternate; }
+@keyframes sweep { to { background-position: -200% 0; } }
+@keyframes glow { to { opacity: .45; } }
+
+/* ---------- arriving and leaving ---------- */
+/* Mac with a notch (or Jarvis's own): the notch reaches down, widens into the bar, and the spark that fell out of it
+   becomes the core. Closing runs it back up into the notch. */
+.bar { visibility: hidden; }
+body.open .bar, body.closing .bar { visibility: visible; }
+body.open .neck { animation: neck-in .16s var(--ease) both; }
+body.virtual-neck.open .neck { animation: neck-grow .2s var(--ease) both; }
+body.closing .neck { animation: neck-out .26s .1s ease-in both; }
+body.open .bar { animation: unfold .5s .06s var(--ease) both; }
+body.has-neck.open .bar { animation-name: unfold-neck; }
+body.open .row, body.open .status { animation: rise .38s .2s var(--ease) both; }
+body.open .shoulder { animation: fade .25s .18s both; }
+body.open .core { animation: core-in .3s .34s var(--ease) both; }
+body.open .spark { animation: spark-in .44s .04s cubic-bezier(.3, .7, .2, 1) both; }
+body.closing .row, body.closing .status, body.closing .answer, body.closing .notice { animation: fade-out .12s ease-in both; }
+body.closing .bar { animation: fold .26s .04s cubic-bezier(.55, 0, .85, .35) both; }
+body.has-neck.closing .bar { animation-name: fold-neck; }
+body.closing .spark { animation: spark-out .26s cubic-bezier(.5, 0, .8, .4) both; }
+@keyframes unfold {
+  from { clip-path: inset(0 34% calc(100% - 4px) 34% round 0 0 var(--radius) var(--radius)); }
+  55% { clip-path: inset(0 0 calc(100% - 40px) 0 round 0 0 var(--radius) var(--radius)); }
+  to { clip-path: inset(0 0 0 0 round 0 0 var(--radius) var(--radius)); }
+}
+@keyframes unfold-neck {
+  from { clip-path: inset(0 var(--neck-r) calc(100% - 2px) var(--neck-l) round 0 0 10px 10px); }
+  40% { clip-path: inset(0 calc(var(--neck-r) * .35) calc(100% - 34px) calc(var(--neck-l) * .35) round 0 0 16px 16px); }
+  to { clip-path: inset(0 0 0 0 round 0 0 var(--radius) var(--radius)); }
+}
+@keyframes fold { to { clip-path: inset(0 30% calc(100% - 2px) 30% round 0 0 var(--radius) var(--radius)); } }
+@keyframes fold-neck { to { clip-path: inset(0 var(--neck-r) calc(100% - 1px) var(--neck-l) round 0 0 10px 10px); } }
+@keyframes neck-in { from { opacity: 0; } }
+@keyframes neck-grow { from { height: 0; } }
+@keyframes neck-out { to { height: 0; opacity: 0; } }
+@keyframes spark-in {
+  0% { opacity: 0; transform: translate(var(--spark-x0), var(--spark-y0)) scale(.3); }
+  18% { opacity: 1; transform: translate(var(--spark-x0), calc(var(--spark-y0) + 6px)) scale(1.15); }
+  80% { opacity: 1; transform: translate(var(--spark-x1), var(--spark-y1)) scale(1); }
+  100% { opacity: 0; transform: translate(var(--spark-x1), var(--spark-y1)) scale(2.6); }
+}
+@keyframes spark-out {
+  0% { opacity: 0; transform: translate(var(--spark-x1), var(--spark-y1)) scale(1.4); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--spark-x0), var(--spark-y0)) scale(.3); }
+}
+@keyframes core-in { from { opacity: 0; transform: scale(.4); } 60% { opacity: 1; transform: scale(1.12); } to { transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+/* Windows: the line of light draws out from the middle of the top edge, and the bar unfolds down from it */
+body[data-platform="win"].open .rail { animation: rail-in .3s var(--ease) both; }
+body[data-platform="win"].closing .rail { animation: rail-in .2s .06s ease-in reverse both; }
+@keyframes rail-in { from { transform: scaleX(0); opacity: 0; } 40% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  body.open .bar, body[data-platform="win"].open .bar { animation: fade .12s both; }
+  body.closing .bar, body[data-platform="win"].closing .bar { animation: fade .1s reverse both; }
+  body.open .row, body.open .status, .turn, body.open .core { animation: none; }
+  .spark { display: none; }
+  .core .ring, .core .heart, .edge, .typing b, .status .dot { animation: none !important; }
+}
+
+/* ======================================================================================================
+   Jarvis Top inside the macOS menu bar (body.menubar). The window is exactly the bar's band (0 to its height, 33 pt on
+   a 13" MacBook Air): a black surface fused with the notch on its right (the notch is black hardware), its left end
+   fading into the menu bar, holding the core, one line to type in (and to show what's heard, "Thinking…", the
+   answer), and the controls. Nothing of it is below the bar.
+   ====================================================================================================== */
+body.menubar { --bar-h: 33px; overflow: hidden; }
+body.menubar .stage { padding: 0; height: 100vh; }
+body.menubar .bar {
+  height: 100vh; border-radius: 0 0 0 calc(var(--bar-h) * .42); box-shadow: none;
+  background: radial-gradient(70% 140% at 100% 50%, rgb(var(--accent) / .09), transparent 70%), #000;
+  -webkit-mask: linear-gradient(90deg, transparent 0, #000 22px);
+}
+body.menubar.to-notch .bar { border-radius: 0 0 0 calc(var(--bar-h) * .42); }
+body.menubar .bar::after, body.menubar .shoulder, body.menubar .rail, body.menubar .status, body.menubar .answer,
+body.menubar .notice, body.menubar .neck, body.menubar .blend { display: none !important; }
+body.menubar .row { height: 100%; padding: 0 4px 0 20px; grid-template-columns: 18px 1fr auto; gap: 9px; }
+body.menubar .core { width: 16px; height: 16px; }
+body.menubar .core .heart { inset: 4.5px; }
+body.menubar .core .ring.two { inset: -2px; }
+body.menubar .core .halo { inset: -5px; }
+body.menubar .field { position: relative; min-width: 0; height: 100%; display: flex; align-items: center; }
+body.menubar textarea { font-size: 13.5px; line-height: 18px; height: 18px; max-height: 18px; padding: 0; white-space: pre; overflow: hidden; }
+body.menubar textarea::placeholder { color: rgb(220 232 255 / .42); }
+body.menubar .actions { gap: 0; }
+body.menubar .icon { width: 25px; height: 25px; border-radius: 7px; }
+body.menubar .icon svg { width: 15px; height: 15px; stroke-width: 1.8; }
+body.menubar .mic[aria-pressed="true"] { box-shadow: 0 0 0 2px rgb(var(--accent) / .18), 0 0 12px rgb(var(--accent) / .55); }
+body.menubar #expand.has-visual { color: rgb(var(--accent)); }
+/* the one line over the input: what's heard, Thinking…, the answer (scrolling through when it's long) */
+.line { display: none; }
+body.menubar .line {
+  position: absolute; inset: 0; display: flex; align-items: center; overflow: hidden; padding: 0; border: 0; text-align: left;
+  background: #000; color: var(--text); font: 13.5px/18px var(--sans); cursor: text; white-space: nowrap;
+  -webkit-mask: linear-gradient(90deg, #000 calc(100% - 18px), transparent);
+}
+body.menubar .line[hidden] { display: none; }
+body.menubar .line-text { display: inline-block; white-space: nowrap; will-change: transform; }
+body.menubar .line[data-kind="heard"] { color: var(--muted); }
+body.menubar .line[data-kind="thinking"], body.menubar .line[data-kind="listening"] { color: rgb(var(--accent)); font: 500 11px/18px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+body.menubar .line[data-kind="thinking"] { color: rgb(var(--violet)); }
+body.menubar .line[data-kind="thinking"] .line-text { animation: blink 1.1s ease-in-out infinite; }
+body.menubar .line[data-kind="notice"] { color: #ffc77a; }
+/* the light along the bar's bottom edge, inside it: brightest at the notch, where Jarvis comes from */
+body.menubar .edge { left: 30%; right: 0; bottom: 0; height: 1px; opacity: .7;
+  background: linear-gradient(90deg, transparent, rgb(var(--violet) / .8) 45%, rgb(var(--accent))); box-shadow: 0 0 10px rgb(var(--accent) / .45); }
+body.menubar .edge::after { display: none; }
+body.menubar[data-state="listening"] .edge { left: 8%; opacity: 1; }
+
+/* arriving: it grows out of the notch to the left, a spark leading it to where the core settles; leaving: back in */
+body.menubar.open .bar { animation: bar-out .42s var(--ease) both; }
+body.menubar.closing .bar { animation: bar-in .24s cubic-bezier(.55, 0, .85, .35) both; }
+body.menubar.open .row { animation: fade .24s .16s both; }
+body.menubar.open .core { animation: core-in .3s .26s var(--ease) both; }
+body.menubar.closing .row { animation: fade-out .1s ease-in both; }
+@keyframes bar-out { from { clip-path: inset(0 0 0 calc(100% - 4px)); } to { clip-path: inset(0 0 0 0); } }
+@keyframes bar-in { from { clip-path: inset(0 0 0 0); } to { clip-path: inset(0 0 0 calc(100% - 2px)); } }
+@media (prefers-reduced-motion: reduce) { body.menubar.open .bar, body.menubar.closing .bar { animation: fade .12s both; } }

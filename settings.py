@@ -19,6 +19,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -34,9 +35,9 @@ FILE_NAME = "settings.json"
 SCHEMA = [
     # --- AI ---
     {"key": "LLM_BACKEND", "section": "AI", "label": "Which AI answers", "type": "choice", "default": "ollama",
-     "choices": [["ollama", "Local AI on this computer (no account needed)"],
-                 ["auto", "Online AI (Groq), with the local AI as backup"],
-                 ["groq", "Online AI (Groq) only"]],
+     "choices": [["ollama", "Local AI on this computer (no account needed; needs 4-8 GB of memory)"],
+                 ["auto", "Online AI (Groq), with the local AI as backup (needs 4-8 GB of memory)"],
+                 ["groq", "Online AI (Groq) only: the lightest, under 2 GB of memory"]],
      "restart": True},
     {"key": "GROQ_API_KEY", "section": "AI", "label": "Groq API key (optional)", "type": "secret", "default": "",
      "help": "Only for the online AI: faster and smarter answers. Free at console.groq.com.", "restart": True},
@@ -74,6 +75,37 @@ SCHEMA = [
      "help": "0-100. Set from the speaker control next to the microphone button.", "advanced": True},
     {"key": "JARVIS_SPEAK_MUTED", "section": "Voice", "label": "Mute Jarvis's voice", "type": "toggle",
      "default": "off", "advanced": True},
+    # --- Quick Access ---
+    {"key": "JARVIS_QUICK", "section": "Quick Access", "label": "Quick Access bar", "type": "toggle", "default": "on",
+     "help": "A small Jarvis bar at the top of the screen, opened with a shortcut from any app. Ask by typing or "
+             "talking; the main window stays where it is."},
+    {"key": "JARVIS_QUICK_SHORTCUT", "section": "Quick Access", "label": "Shortcut", "type": "choice",
+     "default": "hold-command" if sys.platform == "darwin" else "Alt+Space",
+     "choices": [["hold-command", "Hold ⌘ Command for 3 seconds (Ctrl on Windows); ⌥ Space works too"],
+                 ["Alt+Space", "⌥ Option + Space (Alt + Space on Windows)"],
+                 ["CommandOrControl+Shift+Space", "⌘ Command + Shift + Space (Ctrl + Shift + Space on Windows)"],
+                 ["Control+Alt+J", "⌃ Control + ⌥ Option + J (Ctrl + Alt + J on Windows)"],
+                 ["double-command", "Press ⌘ Command twice (Ctrl twice on Windows)"],
+                 ["double-option", "Press ⌥ Option twice (Alt twice on Windows)"],
+                 ["double-shift", "Press Shift twice"],
+                 ["custom", "My own key combination (set it below, with Show advanced on)"]],
+     "help": "Key combinations work in every app with no permission. A hold or a double press only counts when the "
+             "key is used alone, so ⌘C, ⌘Tab or typing capitals never opens it. With Jarvis closed, the Jarvis Wake "
+             "helper notices the hold and starts him with just the bar."},
+    {"key": "JARVIS_QUICK_CUSTOM", "section": "Quick Access", "label": "My own key combination", "type": "text",
+     "default": "Control+Shift+Space", "advanced": True,
+     "help": "Modifiers (Command, Control, Alt or Option, Shift) and one key, joined with +: Control+Shift+K, Alt+F1."},
+    {"key": "JARVIS_QUICK_INPUT", "section": "Quick Access", "label": "When it opens", "type": "choice",
+     "default": "text", "choices": [["text", "Ready to type"], ["voice", "Start listening"]]},
+    {"key": "JARVIS_QUICK_STAY", "section": "Quick Access", "label": "Keep it open when I click elsewhere",
+     "type": "toggle", "default": "on",
+     "help": "On: it stays until you close it (Esc, ×, or the shortcut again). Off: it tucks away when you click "
+             "another window, unless Jarvis is busy or showing an answer (an auto-clicker would close it too)."},
+    {"key": "JARVIS_QUICK_SIZE", "section": "Quick Access", "label": "Size", "type": "choice", "default": "regular",
+     "choices": [["compact", "Compact"], ["regular", "Regular"], ["wide", "Wide"]]},
+    {"key": "JARVIS_QUICK_POSITION", "section": "Quick Access", "label": "Position", "type": "choice",
+     "default": "center", "advanced": True,
+     "choices": [["center", "Top centre"], ["right", "Top right"]]},
     # --- Computer control ---
     {"key": "JARVIS_COMPUTER_CONTROL", "section": "Computer control", "label": "Let Jarvis use the mouse and keyboard",
      "type": "choice", "default": "ask",
@@ -332,7 +364,7 @@ def load() -> None:
             imported = {k: v for k, v in _from_env_file.items() if k in BY_KEY and v}
             _values.update(imported)
             if not _values.get("LLM_BACKEND") and _values.get("GROQ_API_KEY"):
-                _values["LLM_BACKEND"] = "auto"   # someone with a key keeps the online AI they were using
+                _values["LLM_BACKEND"] = "groq"   # someone with a key keeps the online AI, and the light memory use
             if not paths.FROZEN:
                 # Upgrading a copy that ran from source: its weather panel always showed Ramat Gan; keep that.
                 _values.setdefault("WEATHER_CITY", "Ramat Gan, Israel")
@@ -387,9 +419,23 @@ def validate(key: str, value) -> str:
     if key == "JARVIS_SPEAK_VOLUME":
         if not value.isdigit() or not 0 <= int(value) <= 100:
             raise ValueError(f"{item['label']} must be a number from 0 to 100")
+    if key == "JARVIS_QUICK_CUSTOM" and value and not is_accelerator(value):
+        raise ValueError(f"{item['label']}: use modifiers and one key joined with +, like Control+Shift+K")
     if any(ch in value for ch in "\r\n\0"):
         raise ValueError(f"{item['label']} can't contain line breaks")
     return value
+
+
+_MODIFIERS = {"command", "cmd", "control", "ctrl", "commandorcontrol", "cmdorctrl", "alt", "option", "altgr", "shift", "super", "meta"}
+_KEYS = (set("abcdefghijklmnopqrstuvwxyz0123456789") | {f"f{n}" for n in range(1, 25)}
+         | {"space", "tab", "backspace", "delete", "insert", "return", "enter", "up", "down", "left", "right", "home",
+            "end", "pageup", "pagedown", "escape", "esc", "plus", "-", "=", "[", "]", ";", "'", ",", ".", "/", "\\", "`"})
+
+
+def is_accelerator(value: str) -> bool:
+    """A key combination the window can register (Electron's accelerator format): at least one modifier, one key."""
+    parts = [p.strip().lower() for p in str(value).split("+")]
+    return len(parts) >= 2 and all(p in _MODIFIERS for p in parts[:-1]) and parts[-1] in _KEYS and len(set(parts)) == len(parts)
 
 
 def update(changes: dict) -> dict:

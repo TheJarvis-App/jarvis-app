@@ -23,7 +23,9 @@ This document describes everything Jarvis does today.
 
 Ways to stop or pause him:
 
-- Say **"Goodbye"** (or "good night", "see you later") and he goes to sleep until you say "Hey Jarvis" again.
+- Say **"go to sleep"** (or "sleep mode", "Jarvis, you can sleep now"; in Hebrew too) and he goes to sleep until you
+  say "Hey Jarvis" again. That is the only thing you can say that puts him to sleep: "goodbye", "good night" or "see
+  you later" get an answer, and he stays awake (a video or a song says those too).
 - Press **M** to mute the microphone. While muted he hears nothing; typing still works.
 - Press **Space** or the stop button to cut him off while he's speaking.
 - Closing his window puts him to sleep. Minimizing it does not.
@@ -120,32 +122,60 @@ Jarvis always prefers *your own* playlist over a stranger's playlist with the sa
 
 ### Coding Mode
 
-- "Write a Python calculator and open it in VS Code", "build a website for a bakery and save the project locally",
-  "make a snake game", or the **</>** button in the top bar, where the only thing to fill in is what you want.
-  There is nothing to pick: Jarvis chooses the language, the files and everything else the task needs, writes them
-  into a **new project folder** (never into an existing one), checks them, fixes what the checks find, and says
-  where the project is and exactly what was and wasn't checked.
-- **Languages:** Python, JavaScript, TypeScript, React, HTML/CSS, C, C++, C#, Rust, Go, Swift, Objective-C, Java,
-  Kotlin, SQL, PowerShell, Bash, Zsh, Ruby, PHP, R, MATLAB, GDScript, Lua, Dart, and configuration files (JSON, YAML,
-  TOML, XML, Dockerfiles, GitHub Actions, Terraform). Each gets its own file extensions, usual project layout and
-  conventions. Syntax checks use the tools on your computer; a language whose tool isn't installed is reported
-  as "not checked", never as passed.
-- **Where it goes:** always a project folder on your computer; Jarvis doesn't ask. If you name a place in the
-  sentence ("…and open it in VS Code", "…put the code in Word") he does that too, and afterwards the window has
-  buttons for VS Code, a Word document (.docx), Apple Notes, Google Drive and a zip. Word and Notes get a readable
-  copy; the real files stay in the project folder.
-  Google Drive needs a one-time setup (GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET in .env, then Connect);
-  it can only see files Jarvis itself creates there.
-- **Follow-ups** reach the same project: "now add a login page", "fix the errors", "explain what this function does",
-  "save it in Word", "continue working on the project we started earlier". Before a change the originals are backed
-  up, and the window shows what changed, line by line.
-- **Your code is never run just because it was written.** "Run the tests" is the one thing that executes it, only
-  when you ask: on a Mac inside a sandbox with no network that can only write inside the project, always with a time
-  limit and without your keys. If the tests fail, "fix the errors" shows the AI their real output and runs them again.
-- New projects go in Documents/Jarvis Projects (CODE_PROJECTS_DIR in .env changes that). The code is written by
-  Groq's larger free model (openai/gpt-oss-120b), whichever AI Jarvis talks with; a CODE_MODEL line in .env names
-  another. Groq's free plan allows 8,000 tokens a minute, so a bigger project pauses now and then: the window says
-  when it is waiting for that limit.
+- **One chat per project.** Open it with the **</>** button in the top bar (or say "open coding mode", or just ask:
+  "build me a website about racing"). Type what you want in the chat; everything after that is the same
+  conversation: "add a database and a login system", "make the design darker", "fix the error you just
+  introduced", "create tests for everything", "how do I run it?", "now open it in VS Code". Jarvis works out what each
+  message wants: build, change the project, answer a question (nothing is changed), run it, open it, or run the
+  tests. Something unrelated ("now build me a recipe app") starts its own project and chat. The chats and their
+  projects are listed on the left; **New project** starts a fresh one without losing anything.
+- **The project list:** search by name or folder; sort by recent activity, date created or name; each project's **⋯**
+  menu (or right-click, or the menu key) renames it (the name in Jarvis, never the folder), hides it (it moves to
+  "hidden projects" at the bottom, where Show brings it back), shows its folder, or removes it. The eye button hides
+  every earlier project and keeps only the open one. These choices are remembered.
+- **Removing a project** asks first, naming it. By default it only leaves Coding Mode: the files stay exactly where
+  they are, and its chat is kept aside in Jarvis's data folder. Ticking "Also move the project folder to the Trash" also
+  moves the folder to the Trash (never a permanent delete), and only for a folder Jarvis made for that project. A
+  project Jarvis is working on can't be removed until the work is stopped.
+- **How changes are made:** Jarvis first searches the project for the names in your request (where a function or
+  class is defined and used) and shows the AI those files, so a change reaches every place it touches. Existing files
+  are changed with small, exact edits; an edit that doesn't match the file is asked for again, an answer that looks
+  cut off is never used, Windows line endings are kept, and every file is read back after it is written. A key from
+  this computer (an API key in .env) is never written into a project. If the same check fails again after a fix, he
+  stops and says so instead of repeating it. Runs, test runs, file changes and removals are listed in
+  coding_audit.log in Jarvis's data folder, without file contents or secrets.
+- **Interrupted work:** if Jarvis is closed while building, the chat says so when you open it, with how many files were
+  written, and **continue** finishes the build from where it stopped.
+- **Jarvis chooses the technology**, from what you'll do with the result: something you look at and click gets a real
+  interface (a web page, a desktop window, a framework when you ask for one), a script or automation gets the
+  language that does it best. Python is one choice among many, never the default. He knows which tools this
+  computer has (Node.js, Python, a C++ compiler, .NET…) and prefers a setup that runs here. Projects get every file
+  their kind needs: source, configuration (package.json, requirements.txt, a .csproj…), assets drawn as SVG, a
+  README, and tests where there is logic to test. A link to a file that doesn't exist, or a package the code imports
+  but never declares, fails the checks and is fixed before Jarvis says it's done.
+- **The workspace:** the chat in the middle, with a live card for each piece of work (plan, write, check, save, and
+  every file as it is written). On the right: **Files** (the real folder: open, edit and save, new file or folder,
+  rename, delete with a confirmation and a backup copy; Jarvis's new and changed files are marked, and a changed
+  file opens on its changes), **How to run**, and **Checks** (every check's and test's real output).
+- **How to run** is worked out from the project's own files, for this computer: what it is, what you need and
+  whether it's installed here (with the version, or a link to get it), numbered steps with the exact commands to
+  copy, where to type them, what you should see, how to stop it, and what to do about the usual errors. It also
+  says what was checked and what wasn't. **Run** starts it, after you confirm in the chat: a website opens in your
+  browser, anything else opens in Terminal running the right command, where you see its real output.
+- **Nothing runs without you.** Generated code only runs when you press Run (and confirm) or ask for the tests. Tests
+  run on a Mac inside a sandbox with no network that can only write inside the project, always with a time limit
+  and without your keys. Installing packages is part of Run only after you've read that it will, in the
+  confirmation. **Stop** ends the work at the next step; what was already written stays and is said to be incomplete,
+  and a stopped change changes nothing.
+- **Free AI, within its limits.** The code is written by Groq's larger free model (openai/gpt-oss-120b); a CODE_MODEL
+  line in .env names another. Groq's free plan accepts at most 8,000 tokens per request, so Jarvis changes existing
+  files with small, exact edits, and on a bigger project first picks the files a change needs. When the plan's
+  per-minute limit is reached the window shows the wait; when its daily allowance is used up he says when it
+  frees up again (CODE_REQUEST_TOKENS in .env sets another per-request limit).
+- **Where it goes:** a new folder in Documents/Jarvis Projects (CODE_PROJECTS_DIR in .env changes that), never an
+  existing one. From the **⋯** menu: VS Code, the folder, a Word document (.docx), Apple Notes, Google Drive and a zip.
+  Google Drive needs a one-time setup (GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET in .env, then Connect).
+  Before Jarvis changes or you delete a file, a copy goes to Jarvis's code backups.
 
 ### Math
 
@@ -406,6 +436,11 @@ and predictable.
 | **← / →** | Previous or next graph, globe or planet |
 | **Space / R / S** (globe open) | Pause or resume / replay / skip the flight |
 | **Control-Option-Q** | Emergency stop for computer control (Ctrl+Alt+Q on Windows) |
+
+The letter shortcuts work with the keyboard in any language: with Hebrew on, the keys marked F, G, P, M and E (and the
+"/" key, which types "." in Hebrew) do the same as in English. None of them fire while you type in any text box,
+including Coding Mode's chat and its file editor. While Coding Mode is open, only **F** and **Esc** reach the main
+window; **⌘N** (Ctrl+N on Windows) starts a new project there.
 
 ---
 

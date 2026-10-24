@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src ws://127.0.0.1:* ws://localhost:*; img-src 'self' data:; style-src 'self'; script-src 'self'; media-src 'self' mediastream: blob:">
+  <title>Jarvis Quick Access</title>
+  <link rel="stylesheet" href="quick.css">
+</head>
+<body data-state="idle">
+  <i class="neck" id="neck" aria-hidden="true" hidden></i>
+  <i class="spark" id="spark" aria-hidden="true"></i>
+  <i class="blend" aria-hidden="true"></i>
+  <div class="stage">
+    <section class="bar" id="bar" role="dialog" aria-label="Jarvis Quick Access" aria-describedby="statusText">
+      <i class="shoulder left" aria-hidden="true"></i><i class="shoulder right" aria-hidden="true"></i><i class="rail" aria-hidden="true"></i>
+      <div class="row">
+        <div class="core" id="core" aria-hidden="true"><i class="halo"></i><i class="ring"></i><i class="ring two"></i><i class="heart"></i></div>
+        <label class="sr-only" for="ask">Ask Jarvis</label>
+        <div class="field">
+          <textarea id="ask" rows="1" placeholder="Ask Jarvis anything…" autocomplete="off" spellcheck="true" enterkeyhint="send"></textarea>
+          <button class="line" id="line" type="button" hidden aria-live="polite"><span class="line-text" id="lineText"></span></button>
+        </div>
+        <div class="actions">
+          <button class="icon mic" id="mic" type="button" aria-pressed="false" aria-label="Talk to Jarvis" title="Talk to Jarvis">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11.5" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/></svg>
+          </button>
+          <button class="icon stop" id="stop" type="button" aria-label="Stop" title="Stop" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2.2"/></svg>
+          </button>
+          <button class="icon" id="expand" type="button" aria-label="Open the Jarvis app" title="Open the Jarvis app">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-7.5 7.5M10 20H4v-6M4 20l7.5-7.5"/></svg>
+          </button>
+          <button class="icon" id="close" type="button" aria-label="Close" title="Close (Esc)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="status">
+        <span class="dot" aria-hidden="true"></span><span id="statusText" role="status" aria-live="polite">Ready</span>
+        <span class="wave" id="wave" aria-hidden="true"></span>
+        <span class="hint" id="hint"></span>
+      </div>
+      <div class="notice" id="notice" hidden><span id="noticeText"></span><button type="button" id="noticeAction" hidden></button></div>
+      <div class="answer" id="answer" hidden aria-live="polite" aria-label="Jarvis's answer"></div>
+      <i class="edge" aria-hidden="true"></i>
+    </section>
+  </div>
+  <script src="panel.js"></script>
+</body>
+</html>

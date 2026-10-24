@@ -22,6 +22,8 @@ def _mode() -> str:
 
 
 def _local_available() -> bool:
+    if (os.getenv("LLM_BACKEND") or "").strip().lower() == "groq":
+        return False   # online AI only: the light setup never starts the 3 GB vision model on this computer
     try:
         import local_ai
         import local_llm
