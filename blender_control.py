@@ -103,14 +103,32 @@ class BlenderBridge:
 _kit = {}
 
 
+def _read_kit_file(name: str) -> str:
+    bundled = paths.resource(name)
+    path = bundled if os.path.exists(bundled) else os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+# Pure-Python modules the Blender side imports (no bpy in them): registered as real modules inside Blender, so
+# blender_character.py's `import anim_core` works there exactly as in the engine.
+KIT_MODULES = ("anim_library", "anim_core", "world_library")
+# Blender-side files run into the shared namespace after blender_scene.py, in this order.
+KIT_FILES = ("blender_character.py", "blender_world.py", "blender_fx.py")
+
+
 def kit_source() -> str:
-    """blender_scene.py's source: the helpers Blender-side code can use (see that file)."""
+    """The helpers Blender-side code can use: blender_scene.py, then the pure modules (KIT_MODULES) registered as
+    modules, then the Blender-side files (KIT_FILES) — one source, one version."""
     if "source" not in _kit:
-        bundled = paths.resource("blender_scene.py")
-        path = bundled if os.path.exists(bundled) else os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                                    "blender_scene.py")
-        with open(path, "r", encoding="utf-8") as f:
-            _kit["source"] = f.read()
+        parts = [_read_kit_file("blender_scene.py")]
+        for name in KIT_MODULES:
+            parts.append(f"import sys as _jarvis_sys, types as _jarvis_types\n"
+                         f"_jarvis_mod = _jarvis_types.ModuleType({name!r})\n"
+                         f"exec(compile({_read_kit_file(name + '.py')!r}, '<{name}>', 'exec'), _jarvis_mod.__dict__)\n"
+                         f"_jarvis_sys.modules[{name!r}] = _jarvis_mod\n")
+        parts += [_read_kit_file(name) for name in KIT_FILES]
+        _kit["source"] = "\n\n".join(parts)
         import hashlib
         _kit["version"] = hashlib.sha1(_kit["source"].encode("utf-8")).hexdigest()[:12]
     return _kit["source"]

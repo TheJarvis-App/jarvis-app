@@ -146,3 +146,32 @@ def test_ensure_bridge_launches_fresh_without_asking_when_blender_is_not_running
     asked = []
     result = blender_control.ensure_bridge(session, confirm=lambda q: asked.append(q))
     assert result == "bridge" and launched and not asked
+
+
+
+def test_the_kit_files_never_define_the_same_top_level_name_twice():
+    """blender_scene.py and the Blender-side kit files run into one namespace in Blender: a name defined twice
+    silently replaces the first (that once broke every box() through a door helper)."""
+    import ast
+
+    def names(path):
+        out = set()
+        for node in ast.parse(open(path, encoding="utf-8").read()).body:
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                out.add(node.name)
+            elif isinstance(node, ast.Assign):
+                out |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+        return out
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    files = ["blender_scene.py"] + list(blender_control.KIT_FILES)
+    seen = {}
+    for f in files:
+        for n in names(os.path.join(root, f)) - {"json", "math", "os", "random"}:
+            assert n not in seen, f"{n} is defined in both {seen.get(n)} and {f}"
+            seen[n] = f
+
+
+def test_the_kit_carries_the_motion_modules_and_stays_one_loader_of_three_lines():
+    source = blender_control.kit_source()
+    assert "def arch_roof(" in source and "def character_build(" in source and "def solve(" in source
+    assert blender_control.with_kit("RESULT = 1").count("\n") == 3

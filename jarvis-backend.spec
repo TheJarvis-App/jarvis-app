@@ -34,7 +34,8 @@ datas += [(f, ".") for f in ("phone_client.html", "phone_sw.js", "confirm.html",
 datas += [("phone_icons", "phone_icons")]
 datas += [("geo_data", "geo_data")]   # country borders and populated places for the globe (geo.py): Natural Earth
 # The script Blender itself runs (blender_control.bridge_script): Blender needs a real .py file, not a frozen module
-datas += [("blender_bridge.py", "."), ("blender_scene.py", ".")]   # blender_scene: see with_kit
+datas += [(f, ".") for f in ("blender_bridge.py", "blender_scene.py", "blender_character.py", "blender_world.py",
+                            "blender_fx.py", "anim_library.py", "anim_core.py", "world_library.py")]   # the Blender-side kit: see blender_control.with_kit
 
 if sys.platform == "win32":
     for package in ("uiautomation", "comtypes", "pycaw"):

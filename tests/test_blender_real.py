@@ -674,3 +674,122 @@ def test_building_again_over_a_changed_villa_asks_and_a_no_keeps_the_changes(bri
     assert task.state == "error" and "left the villa as it is" in reply
     assert "moved the pool" in asked[0]
     assert _features(bridge)["Villa/pool"]["uids"] == pool["uids"]
+
+
+# ---------- a character animated in the villa (anim_core + blender_character): measured on the evaluated rig ----------
+
+def test_a_man_walks_up_opens_the_door_goes_in_and_closes_it_measured_on_the_real_rig(bridge):
+    kit(bridge, FRESH + "RESULT = 'ok'")
+    task, reply, _, _ = _build(bridge, "create a villa")
+    assert task.state == "completed", reply
+    door = facts(bridge, "RESULT = json.dumps(door_facts('Villa'))")
+    assert door["room_behind"][0] > door["room_behind"][1] or door["hinge"] != door["hinge"]   # hinged where there's room
+    u, n = door["u"], door["n_in"]
+    mid = [door["hinge"][0] + u[0] * door["width"] / 2, door["hinge"][1] + u[1] * door["width"] / 2]
+    import math
+    script = {"actors": [{"id": "man", "name": "Man", "at": [mid[0] - n[0] * 7, mid[1] - n[1] * 7],
+                          "heading": math.degrees(math.atan2(n[0], -n[1]))}],
+              "doors": [{"id": "front", "build": "Villa"}],
+              "script": [{"actor": "man", "do": "open_door", "door": "front"},
+                         {"actor": "man", "do": "close_door", "door": "front"}]}
+    made = facts(bridge, f"RESULT = json.dumps(animate({json.dumps(script)!r}))")
+    rig = made["built"]["Man"]
+    assert rig["unweighted"] == 0 and rig["axes_error"] < 1e-3 and rig["deform"] >= 25
+    what = [w for w, _ in made["events"]["man"]]
+    assert what.index("grasp handle") < what.index("door open") < what.index("door closed")
+    m = facts(bridge, "RESULT = json.dumps(inspect_motion())")
+    man = m["characters"]["Man"]
+    assert man["frames_measured"] > 300
+    assert man["knee"][1] - man["knee"][0] > 40           # the legs really bend and straighten: it moves
+    assert man["slide"] < 0.005 and man["float"] < 0.02 and man["sink"] < 0.02, man
+    assert man["ik_leg"] < 0.005 and man["ik_arm"] < 0.01
+    assert man["hold_frames"] > 40 and man["hand_handle"] < 0.05     # the hand on the moving handle
+    assert not man["wall_hits"] and not man["door_hits"], (man["wall_hits"], man["door_hits"])
+    assert man["knee_backwards"] == 0 and man["jump_deg"] < 45      # no knee bending the wrong way, no snap
+    swing = m["doors"]["front"]
+    assert swing["max"] >= 80 and swing["end"] < 0.5 and swing["max_step"] < 7     # opened, shut, never jumping
+
+
+# ---------- whole scenes (scene_plan + scene_director): different kinds of request, each checked in Blender ----------
+# The steps are the ones Jarvis runs for the sentence; only the video renders are left out (minutes each). A scene
+# task completes only when every measured check in its report passes.
+
+def _scene(bridge, session, text, render=False):
+    import blender_commands
+    import computer_use
+    steps = blender_commands.steps_for(blender_commands.normalize(text), session, bridge)
+    assert steps is not None, f"not understood: {text}"
+    if not render:
+        steps[:] = [s for s in steps if not s[0].startswith("Rendering")]
+    task = computer_use.ScriptedTask(text, steps, log=lambda *a: None)
+    return task, task.run(), steps
+
+
+def _new_session():
+    import computer_use
+    s = computer_use.ControlSession(env=None)
+    s.confirm = lambda question: True
+    return s
+
+
+def test_a_room_with_the_furniture_asked_for_is_arranged_and_every_piece_shows(bridge):
+    kit(bridge, FRESH + "RESULT = 'ok'")
+    task, reply, _ = _scene(bridge, _new_session(), "create a living room with a sofa, a coffee table, two chairs "
+                                                    "and a lamp", render=True)
+    assert task.state == "completed", reply
+    f = facts(bridge, "RESULT = json.dumps(scene_facts())")
+    assets = sorted(o.get("asset") for objs in f["tasks"].values() for o in objs if o.get("asset"))
+    assert assets.count("sofa") == 1 and assets.count("table") == 1 and assets.count("chair") == 2   # no doubles
+    assert "the saved project reopens" in reply
+
+
+def test_a_woman_walks_to_a_table_picks_up_a_cup_and_drinks_with_her_hand_on_it(bridge):
+    kit(bridge, FRESH + "RESULT = 'ok'")
+    task, reply, _ = _scene(bridge, _new_session(), "a woman walks to the table, picks up a cup and drinks from it")
+    assert task.state == "completed", reply
+    assert "Woman's hand on what it carries" in reply and "0 wall / 0 door contacts" in reply
+    m = facts(bridge, "RESULT = json.dumps(inspect_motion())")["characters"]["Woman"]
+    assert m["carry_frames"] > 40 and m["hand_prop"] < 0.06 and not m["wall_hits"] and m["jump_deg"] < 60
+
+
+def test_a_flying_vehicle_weaves_between_a_citys_towers_in_the_rain_and_a_follow_up_makes_it_faster(bridge):
+    kit(bridge, FRESH + "RESULT = 'ok'")
+    session = _new_session()
+    task, reply, _ = _scene(bridge, session, "Create a futuristic city at night, then animate a flying vehicle moving "
+                                             "between the skyscrapers while rain falls and the camera follows it")
+    assert task.state == "completed", reply
+    before = facts(bridge, "RESULT = json.dumps({'towers': sorted(o.name for o in bpy.data.objects if "
+                           "o.get('jarvis_asset') == 'skyscraper'), 'rain': [o.name for o in bpy.data.objects if "
+                           "o.get('jarvis_fx') == 'weather'], 'speed': json.loads(bpy.data.objects['Flying Car']"
+                           "['jarvis_motion'])['speed']})")
+    assert len(before["towers"]) >= 9 and before["rain"]
+    task, reply, steps = _scene(bridge, session, "make it faster")
+    assert task.state == "completed", reply
+    assert "Building the environment" not in [d for d, _ in steps]   # the city isn't rebuilt
+    after = facts(bridge, "RESULT = json.dumps({'towers': sorted(o.name for o in bpy.data.objects if "
+                          "o.get('jarvis_asset') == 'skyscraper'), 'speed': json.loads(bpy.data.objects['Flying Car']"
+                          "['jarvis_motion'])['speed']})")
+    assert after["towers"] == before["towers"] and after["speed"] == pytest.approx(before["speed"] * 1.5)
+    task, reply, steps = _scene(bridge, session, "change the weather to snow")
+    assert task.state == "completed", reply
+    weather = facts(bridge, "RESULT = json.dumps(sorted(o.name for o in bpy.data.objects if o.get('jarvis_fx') == "
+                            "'weather' and o.modifiers))")
+    assert weather == ["Snow"]
+
+
+def test_something_without_a_model_is_a_stand_in_that_still_flies_and_is_said_to_be_one(bridge):
+    kit(bridge, FRESH + "RESULT = 'ok'")
+    task, reply, _ = _scene(bridge, _new_session(), "create a dragon flying around a castle")
+    assert task.state == "completed", reply
+    assert reply.startswith("Built, with a plain stand-in for the dragon") and "0 contacts" in reply
+
+
+def test_the_villa_sequence_through_the_scene_planner_builds_walks_opens_enters_and_closes(bridge):
+    kit(bridge, FRESH + "RESULT = 'ok'")
+    task, reply, _ = _scene(bridge, _new_session(), "Create a realistic villa, then animate a man walking toward the "
+                                                    "entrance in the rain, opening the door, entering, and closing it.")
+    assert task.state == "completed", reply
+    m = facts(bridge, "RESULT = json.dumps(inspect_motion())")
+    man = m["characters"]["Man"]
+    assert man["hold_frames"] > 30 and man["hand_handle"] < 0.06 and not man["door_hits"] and not man["wall_hits"]
+    assert m["doors"]["front"]["max"] > 60 and m["doors"]["front"]["end"] < 1

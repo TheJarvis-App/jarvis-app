@@ -23,6 +23,8 @@ import difflib
 import blender_build
 import blender_control
 import blender_edit
+import scene_director
+import scene_plan
 
 _SHAPES = {
     "cube": "cube", "box": "cube",
@@ -1017,7 +1019,9 @@ def _ref_ok(ref: str, bridge) -> bool:
 
 # The words Blender requests are made of, for fixing typos in them ("delite evrything in bender"). Only words of four
 # letters or more, and only to a word this close, so ordinary words are never "corrected" into commands.
-_VOCABULARY = ("delete", "remove", "everything", "blender", "create", "villa", "building", "garden", "terrace",
+_VOCABULARY = ("animate", "animation", "character", "skyscraper", "futuristic", "vehicle", "weather", "forest",
+               "desert", "walking", "sandwich", "raining", "towards",
+               "delete", "remove", "everything", "blender", "create", "villa", "building", "garden", "terrace",
                "balcony", "garage", "improve", "better", "beautiful", "swimming", "connect", "entrance", "between",
                "rotate", "bigger", "smaller", "wider", "narrower", "walkway", "pathway", "cottage", "mansion", "scene",
                "render", "move", "house", "widen", "enlarge", "shrink", "lengthen", "expand", "paint", "colour",
@@ -1031,7 +1035,9 @@ _REAL_WORDS = {"point", "print", "plant", "place", "pole", "poll", "pull", "bath
                "elect", "delta", "label", "scent", "camel", "cameo", "rotation", "colon", "cooler", "pain", "pail",
                "past", "paste", "patch", "pooh", "hours", "house", "movie", "moved", "mover", "garter", "bigger",
                "builder", "delay", "deleted", "removal", "widow", "window", "windows", "linger", "select", "scenes",
-               "scones", "shrimp", "expend", "lighter", "lightly", "villain", "villas", "garbage", "blend", "blends", "plain", "readme"}
+               "scones", "shrimp", "expend", "lighter", "lightly", "villain", "villas", "garbage", "blend", "blends", "plain", "readme",
+               "whether", "forget", "forgets", "dessert", "desserts", "deserve", "waking", "ruining", "talking",
+               "animal", "animals", "vehicles", "toward", "remain", "reading"}
 # "crate a realistic villa": before "a"/"an"/a number "crate" is the verb "create" mistyped; "the crate", "to Crate" stay.
 _CRATE_VERB = re.compile(r"\b([Cc])rate(?= (?:a|an|another|some|one|two|three|four|five|\d+)\b)")
 
@@ -1055,6 +1061,11 @@ def normalize(text: str) -> str:
     t = " ".join(fix_typos(text).split())
     for pattern, fix in _MISHEARD:
         t = pattern.sub(fix, t)
+    whole = _FILLER.sub("", t).strip(" .!?,")
+    if scene_plan.is_scene_request(whole):
+        # a scene is said in several sentences ("Create a villa, then animate a man... Use cinematic camera
+        # movements.") and every one of them is part of it: keep them all
+        return whole
     sentences = [s for s in re.split(r"(?<=[.!?])\s+", t) if s.strip()]
     if len(sentences) > 1:
         instructions = [s for s in sentences if _CONCRETE_VERB.search(s)]
@@ -1312,8 +1323,16 @@ def is_command(text: str) -> bool:
     """Whether `text` is made of the everyday object commands here (create / resize / color / move / rotate /
     delete / duplicate / select / switch to Blender). Nothing is run."""
     t = normalize(text)
-    return (blender_build.parse(t) is not None or blender_edit.is_edit(t) or
-            _match_steps(t, None, None, everyday_only=True) is not None)
+    return (blender_build.parse(t) is not None or blender_edit.is_edit(t) or scene_plan.is_scene_request(t) or
+            scene_plan.might_be_followup(t) or _match_steps(t, None, None, everyday_only=True) is not None)
+
+
+def _local_ask(messages):
+    """The local AI, for what the scene vocabularies don't cover (shaping "a dragon" out of parts). Its answer is
+    only ever data that scene_plan.validate checks."""
+    import local_llm
+    response = local_llm.chat(messages=messages, max_tokens=900, temperature=0.2)
+    return response.choices[0].message.content or ""
 
 
 def steps_for(text: str, session, bridge):
@@ -1325,6 +1344,14 @@ def steps_for(text: str, session, bridge):
     if _AGAIN.match(t):
         previous = getattr(session, "last_deterministic_text", None)
         return steps_for(previous, session, bridge) if previous else None
+    # an edit of something by name ("make the garden better", "widen the path") is the editor's, even when the word
+    # could also name a place to build
+    if not blender_edit.is_edit(t) and (scene_plan.is_scene_request(t) or scene_plan.might_be_followup(t)):
+        # a scene of any kind (environments, objects, characters, motion, weather, camera, video), or a change to
+        # the one that's there: planned, staged and checked by the scene director
+        steps = scene_director.steps_for(t, session, bridge, ask_ai=_local_ask)
+        if steps:
+            return steps
     steps = blender_build.steps_for(t, session, bridge)   # a whole building: planned, staged and checked
     if steps:
         return steps

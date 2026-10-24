@@ -1943,6 +1943,8 @@ class ScriptedTask(ComputerTask):
 
     def run(self) -> str:
         summary = ""
+        if hasattr(self.steps, "task"):   # long steps (a video render) report progress and honour Stop themselves
+            self.steps.task = self
         try:
             for self.step, (description, action) in enumerate(self.steps, 1):
                 if not self._checkpoint():
@@ -1963,6 +1965,9 @@ class ScriptedTask(ComputerTask):
                 self._expected_cursor = self.cursor()
             return self._finish("completed", summary or "Done.")
         except Exception as e:   # a step that can't be done ends the task in plain words
+            if type(e).__name__ == "Stopped":   # scene_director: Stop was said in the middle of a long step
+                return self._finish("stopped", "Stopped. What was finished so far is still in Blender. You have "
+                                               "control again.")
             self.log(f"Computer control step failed: {type(e).__name__}: {e}")
             if self.step:
                 self._note(self.steps[self.step - 1][0], "failed", str(e))

@@ -64,6 +64,7 @@ import local_llm
 import local_ai
 import stt_local
 import blender_build
+import scene_plan
 import blender_commands
 import blender_edit
 import blender_control
@@ -602,7 +603,7 @@ async def handle_client(websocket):
                     except Exception:
                         pass
             elif data.get("type") == "text":  # something typed in the window instead of spoken
-                typed = " ".join(str(data.get("text", "")).split())[:500]
+                typed = " ".join(str(data.get("text", "")).split())[:4000]   # a whole scene can be described in one message
                 if typed:
                     typed_inputs.put(typed)
                     interrupt_speech.set()  # if Jarvis is talking, stop so he can answer this
@@ -4295,6 +4296,9 @@ def _starting_reply(goal: str, session=None) -> str:
     that sounds like nothing will happen. Blender's own words only while the session works in Blender."""
     said = blender_commands.normalize(goal)
     if session is not None and session.blender is not None:
+        if scene_plan.is_scene_request(said):
+            plan = scene_plan.parse(said)
+            return f"On it — {scene_plan.describe(plan)}. I'll build it in stages and check each one. Say “stop” to cancel."
         if blender_build.parse(said):
             return blender_build.BuildSteps.intro
         intro = blender_edit.intro_for(said, session)
@@ -4331,7 +4335,8 @@ def is_blender_goal(goal: str, said: str = "") -> bool:
         return True
     # No Blender window found (minimised to another desktop, or one with no window at all), but an edit of the scene
     # ("move the pool"): Blender is there if its bridge answers. Only for those, so other sentences never wait.
-    return blender_edit.is_edit(goal) and blender_control.BlenderBridge().ping(timeout=0.5)
+    scene = scene_plan.is_scene_request(goal) or scene_plan.might_be_followup(goal)
+    return (blender_edit.is_edit(goal) or scene) and blender_control.BlenderBridge().ping(timeout=0.5)
 
 
 def run_blender_directly(goal: str):
