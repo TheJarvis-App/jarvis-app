@@ -54,3 +54,6 @@ models/
 coding_history.json
 code_backups/
 graphify-out/
+
+# PowerShell cache
+Microsoft/
