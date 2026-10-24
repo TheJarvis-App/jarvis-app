@@ -178,6 +178,24 @@ def _environment(state):
                 t["furniture_for"] = [[x["asset"], x["id"]] for x in asked for _ in range(int(x.get("count") or 1))]
                 for x in asked:
                     x["by_env"] = t["id"]
+        elif t.get("type") in scene_plan.world_library.ENVIRONMENTS:
+            # what the place already has (a park's fountain and benches, a city's street lights) counts toward
+            # what was asked for; only what's beyond it is placed on its own
+            lay = scene_plan.world_library.layout(t["type"], {k: t.get(k) for k in ("style", "size", "density", "seed")
+                                                              if t.get(k)})
+            have = {}
+            for item in lay["items"]:
+                have[item["asset"]] = have.get(item["asset"], 0) + 1
+            provides = {}
+            for x in state["plan"]["tasks"]:
+                if x["kind"] == "object" and not x.get("place") and have.get(x.get("asset")) and not x.get("by_env"):
+                    n = min(int(x.get("count") or 1), have[x["asset"]])
+                    provides[x["asset"]] = [x["id"], n]
+                    if n >= int(x.get("count") or 1):
+                        x["by_env"] = t["id"]
+                    else:
+                        x["extra_count"] = int(x["count"]) - n
+            t["provides"] = provides
         facts = _call(bridge, "build_environment", t, doing="building the environment", timeout=600)
         check = _call(bridge, "inspect_scene", [t["id"]], doing="checking the environment")
         for _ in range(REPAIRS):
@@ -327,7 +345,8 @@ def _objects(state):
         if t.get("asset") == "unknown":
             _shape_unknown(state, t)
         facts = _call(bridge, "scene_facts", doing="reading the scene")
-        out = _call(bridge, "place_objects", t, _near_for(state, t, facts), doing=f"placing the {t['asset']}")
+        placing = dict(t, count=t["extra_count"]) if t.get("extra_count") else t
+        out = _call(bridge, "place_objects", placing, _near_for(state, t, facts), doing=f"placing the {t['asset']}")
         made.append(f"{len(out['made'])} {t.get('name') or t['asset'].replace('_', ' ')}")
     ids = [t["id"] for t in _tasks(state, "object")]
     check = _call(bridge, "inspect_scene", ids, doing="checking the objects")
@@ -597,8 +616,8 @@ def _camera(state):
 
     def bad(ch):
         n = max(1, ch.get("frames", 1))
-        if ch.get("still"):   # a still scene: everything asked for is in the picture
-            return bool(ch.get("outside")) or bool(ch.get("camera_inside"))
+        if ch.get("still"):   # a still scene: everything asked for is in the picture, and big enough to see
+            return bool(ch.get("outside")) or bool(ch.get("camera_inside")) or ch.get("fill", 1.0) < 0.15
         return (len(ch.get("outside", [])) + len(ch.get("hidden", []))) / n > 0.15 or len(ch.get("camera_inside", [])) > 0
     attempt = 0
     while bad(check) and attempt < REPAIRS + 1:
@@ -608,7 +627,8 @@ def _camera(state):
     n = max(1, check.get("frames", 1))
     _note(state, "the camera keeps the subject in view", not bad(check),
           f"out of frame {len(check.get('outside', []))}/{n}, hidden {len(check.get('hidden', []))}/{n} sampled frames"
-          + (f", inside something on {len(check['camera_inside'])}" if check.get("camera_inside") else ""))
+          + (f", inside something on {len(check['camera_inside'])}" if check.get("camera_inside") else "")
+          + (f", what was made fills {check['fill']:.0%} of the picture" if "fill" in check else ""))
     return f"Camera: {res['shot']}."
 
 

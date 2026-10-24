@@ -935,6 +935,24 @@ def set_camera(task, attempt=0):
         cam_data.lens = 16
         scene.camera = cam
         return {"camera": cam.name, "shot": "room", "frames": None}
+    if not task.get("subject") and shot in ("establishing", "static", "follow", "cinematic"):
+        # nothing moves: a three-quarter view from above that fits what the plan made (not its whole lawn), with
+        # blender_scene.frame() — the environment's ground and the sky stay out of the sum
+        things = [o.name for o in _fx_still_things()]
+        if things:
+            a = math.radians(35 + 50 * attempt)
+            los = [box(bpy.data.objects[n])[0] for n in things]
+            his = [box(bpy.data.objects[n])[1] for n in things]
+            lo = Vector([min(v[i] for v in los) for i in range(3)])
+            hi = Vector([max(v[i] for v in his) for i in range(3)])
+            c = (lo + hi) / 2
+            span = max((hi - lo).x, (hi - lo).y, 2.0)
+            cam.location = c + Vector((math.cos(a) * span, -math.sin(a) * span, span * 0.6))
+            cam_data.lens = 28
+            cam_data.clip_end = 2000
+            scene.camera = cam
+            frame(things, camera=cam.name, margin=0.1)
+            return {"camera": cam.name, "shot": "fitted", "frames": None}
     frames = [f for f, _ in track]
     pts = [p for _, p in track]
     vel = []
@@ -1096,9 +1114,7 @@ def inspect_camera(subject_id=None, step=4):
     track = dict(_fx_track(subject_id, step)) if subject_id else {}
     if not subject_id:   # nothing moves: everything the plan made must be in the picture, on its first frame
         scene.frame_set(scene.frame_start)
-        things = [o for o in scene.objects if o.type == 'MESH' and o.get("jarvis_scene") and
-                  (o.get("jarvis_scene_role") or "") not in ("ground", "floor", "wall", "ceiling", "sidewalk", "water",
-                                                             "glass", "nature", "light", "building")]
+        things = _fx_still_things()
         out["things"] = len(things)
         for o in things:
             lo, hi = box(o)
@@ -1107,6 +1123,12 @@ def inspect_camera(subject_id=None, step=4):
                 out["outside"].append(o.name)
         out["frames"] = max(1, len(things))
         out["still"] = True
+        # and big enough to see: the share of the picture the box around them all takes
+        if things:
+            pts_ = [world_to_camera_view(scene, cam, c) for o in things for c in _corners(box(o))]
+            xs = [min(1, max(0, p.x)) for p in pts_ if p.z > 0]
+            ys = [min(1, max(0, p.y)) for p in pts_ if p.z > 0]
+            out["fill"] = round((max(xs) - min(xs)) * (max(ys) - min(ys)), 3) if xs else 0.0
         cpos = cam.matrix_world.translation
         if tree is not None and _fx_inside(tree, cpos):
             out["camera_inside"].append(scene.frame_start)
@@ -1134,6 +1156,15 @@ def inspect_camera(subject_id=None, step=4):
     for k in ("outside", "hidden", "camera_inside"):
         out[k] = out[k][:30]
     return out
+
+
+def _fx_still_things():
+    """What a still picture is of: the objects the plan made, not the ground, walls, sky or a layout's filler."""
+    made = [o for o in _fx_scene().objects if o.type == 'MESH' and o.get("jarvis_scene") and
+            (o.get("jarvis_scene_role") or "") not in ("ground", "floor", "wall", "ceiling", "sidewalk", "water",
+                                                       "glass", "light")]
+    asked = [o for o in made if o.get("jarvis_for") or o.get("jarvis_scene_role") == "object"]
+    return asked or made   # what was asked for; with nothing named, the place's own things
 
 
 def _fx_inside(tree, p):

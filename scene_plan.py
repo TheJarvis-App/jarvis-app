@@ -945,6 +945,14 @@ def with_defaults(plan):
     return plan
 
 
+def _plural(word):
+    if re.search(r"(?:s|x|z|ch|sh)$", word):
+        return word + "es"
+    if re.search(r"[^aeiou]y$", word):
+        return word[:-1] + "ies"
+    return word + "s"
+
+
 def describe(plan):
     """The plan in a sentence, for the first thing Jarvis says."""
     parts = []
@@ -958,7 +966,7 @@ def describe(plan):
             parts.append(f"a {t['noun']}")
         elif k == "object":
             name = t.get("name") or t["asset"].replace("_", " ")
-            parts.append(f"{t['count']} {name}s" if t.get("count", 1) > 1 else f"a {name}")
+            parts.append(f"{t['count']} {_plural(name)}" if t.get("count", 1) > 1 else f"a {name}")
         elif k == "character":
             parts.append(f"a {t['template']}")
         elif k in ("action", "motion"):

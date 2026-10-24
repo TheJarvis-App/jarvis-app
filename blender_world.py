@@ -340,6 +340,17 @@ def build_environment(task):
         params["furniture"] = task.get("furniture_default") or world_library.ROOM_FURNITURE.get(
             task.get("room") or "room", world_library.ROOM_FURNITURE["room"])
     lay = world_library.layout(kind, params)
+    provides = {a: [tid_, n] for a, (tid_, n) in (task.get("provides") or {}).items()}
+    if provides:   # "a park with three benches": three, not the layout's own six
+        keep, seen = [], {}
+        for item in lay["items"]:
+            a = item["asset"]
+            if a in provides:
+                seen[a] = seen.get(a, 0) + 1
+                if seen[a] > provides[a][1]:
+                    continue
+            keep.append(item)
+        lay["items"] = keep
     made = []
     g = lay["ground"]
     if g.get("room"):
@@ -361,6 +372,10 @@ def build_environment(task):
                         role=item.get("role", "item"))
         if item.get("for"):
             o["jarvis_for"] = item["for"]
+        elif provides.get(item["asset"]) and provides[item["asset"]][1] > 0:
+            # one the request asked for ("a park with a fountain"): the layout's own, not a second one beside it
+            o["jarvis_for"] = provides[item["asset"]][0]
+            provides[item["asset"]][1] -= 1
         made.append(o)
     if "river" in (task.get("features") or []) and kind != "room":
         river, pts = _w_river(tid, lay["bounds"])
