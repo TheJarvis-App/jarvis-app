@@ -9,7 +9,7 @@
 
 const SHELL = "jarvis-shell-v1";
 const SHELL_FILES = ["/agent.js", "/manifest.webmanifest", "/apple-touch-icon.png", "/icons/icon-192.png",
-                     "/vendor/fonts/orbitron-latin.woff2"];   // the display face: the app looks itself offline too
+                     "/vendor/fonts/orbitron-latin.woff2", "/vendor/fonts/sora-latin.woff2", "/vendor/fonts/onest-latin.woff2"];   // the faces: the app looks itself offline too
 const NETWORK_WAIT = 3500;   // ms before the kept copy is used instead
 
 self.addEventListener("install", (event) => {
@@ -20,17 +20,18 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 const OFFLINE_PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#02040a"><title>Jarvis</title><style>
-@font-face{font-family:Orbitron;src:url(/vendor/fonts/orbitron-latin.woff2) format("woff2");font-weight:400 900}
-html,body{height:100%;margin:0;background:#02040a;color:#e8f4ff;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+@font-face{font-family:Sora;src:url(/vendor/fonts/sora-latin.woff2) format("woff2");font-weight:200 700}
+@font-face{font-family:Onest;src:url(/vendor/fonts/onest-latin.woff2) format("woff2");font-weight:300 700}
+html,body{height:100%;margin:0;background:#03050b;color:#f1f5fc;font:16px/1.5 Onest,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;
 padding:24px calc(24px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
-background:radial-gradient(120% 56% at 50% -12%,rgb(120 135 172/.2),transparent 64%),#02040a}
+background:radial-gradient(110% 50% at 50% -10%,rgb(120 135 172/.2),transparent 64%),linear-gradient(180deg,#050a1d,#02040c 70%)}
 .orb{width:96px;height:96px;border-radius:50%;border:1px solid rgb(120 135 172/.3);border-top-color:#7887ac;
 animation:t 9s linear infinite;margin-bottom:10px}@keyframes t{to{transform:rotate(360deg)}}
-h1{font:600 21px/1.25 Orbitron,system-ui,sans-serif;letter-spacing:.02em;margin:0}
-p{margin:0;color:#8fa3c4;max-width:290px;font-size:15.5px}button{margin-top:12px;border:0;min-height:52px;
-padding:0 28px;font:600 16px system-ui,sans-serif;background:#4fd8ff;color:#021019;
-clip-path:polygon(11px 0,100% 0,100% calc(100% - 11px),calc(100% - 11px) 100%,0 100%,0 11px)}
+h1{font:400 24px/1.25 Sora,system-ui,sans-serif;letter-spacing:-.02em;margin:0}
+p{margin:0;color:#aab6cc;max-width:290px;font-size:15.5px}button{margin-top:12px;border:0;min-height:52px;
+padding:0 28px;font:600 16px Onest,system-ui,sans-serif;background:linear-gradient(180deg,#a6ecff,#4fd8ff 60%);color:#03121c;
+border-radius:15px;box-shadow:inset 0 1px 0 rgb(255 255 255/.5),0 12px 28px -12px rgb(79 216 255/.85)}
 @media (prefers-reduced-motion:reduce){.orb{animation:none}}
 </style></head><body><div class="orb"></div><h1>You're offline</h1>
 <p>Jarvis will reconnect as soon as your phone is back online.</p>
@@ -72,6 +73,18 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("push", (event) => {
   let data = { title: "Jarvis", body: "", actions: [], data: {} };
   try { data = { ...data, ...event.data.json() }; } catch { /* a non-JSON push: keep the default text */ }
+  const calling = data.data && data.data.call;
+  if (calling) {
+    // Jarvis is calling this phone through the app (telephony/app_call.py). The same notification is sent again
+    // every few seconds while it rings, and each one buzzes: that is the ringing. When the call is over, the last
+    // one ("Missed call") takes its place quietly.
+    const ringing = data.data.ringing === true;
+    event.waitUntil(self.registration.showNotification(data.title || "Jarvis is calling", {
+      body: data.body || "", tag: "jarvis-call", renotify: ringing, requireInteraction: ringing, silent: !ringing,
+      vibrate: ringing ? [500, 250, 500, 250, 500] : undefined, data: { call: String(calling) },
+    }));
+    return;
+  }
   event.waitUntil(
     self.registration.showNotification(data.title || "Jarvis", {
       body: data.body || "",
@@ -87,6 +100,19 @@ self.addEventListener("notificationclick", (event) => {
   const sessionData = event.notification.data || {};
   const isSessionRequest = !!sessionData.sessionId;
   event.notification.close();
+
+  if (sessionData.call) {
+    // A call from Jarvis: bring the app forward (or open it). Once it connects, Jarvis tells it he is ringing and
+    // it shows Answer and Decline; nothing about the call is decided here.
+    event.waitUntil((async () => {
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of clients) {
+        if ("focus" in client) { try { return await client.focus(); } catch { /* try the next, or open one */ } }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow("/?call=1");
+    })());
+    return;
+  }
 
   if (!isSessionRequest) {
     event.waitUntil(self.clients.openWindow("/"));

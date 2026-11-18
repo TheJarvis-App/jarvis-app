@@ -45,6 +45,21 @@ server already uses, can't read a request body, only a query string):
     already-paired phone does through this page past loading it is authenticated with that phone's own device key
     (see phone_session.py's PhoneSessionRouter._handle_device_message) — this relay still never sees a token or a
     key, just which device a message is addressed to.
+
+Phone calls (PhoneLink, telephony/bridge.py on the Jarvis side): when Jarvis telephones his owner, the telephone
+company has to deliver the call's live audio to a public address, and this relay is that address.
+  computer -> relay (once, on connect):  {"type": "hello", "role": "tel", "bridgeId": "..."}   -> {"type": "hello_ok"}
+  telephone company -> relay:            a WebSocket opened at /tel/<bridgeId>
+  relay -> computer:                     {"type": "tel_open", "id", "signature"}   (the company's signature header)
+                                         {"type": "tel", "id", "data": <each message of the stream>}
+                                         {"type": "tel_closed", "id"}
+  computer -> relay:                     {"type": "tel", "id", "data": <message for the stream>}
+                                         {"type": "tel_close", "id"}
+The relay still decides nothing: the bridgeId is a long random value known only to that computer and its telephone
+company, and whether a stream is genuine (the company's signature, the call's one-time token) is checked on the
+computer, which is the only place the account's secret lives. Unlike the phone app's messages, a call's audio is
+not end-to-end encrypted (the telephone company is one end of it): it passes through here in memory, encrypted in
+transit, and is never written anywhere.
 """
 import asyncio
 import json
@@ -74,7 +89,7 @@ VISUAL_SCRIPTS = ("sphere_gl.js", "graph.js", "earth.js", "planet.js", "vendor/j
 # Jarvis's brain for the phone (see phone_visuals.py): pure calculation, copied into ./brain/ by the Dockerfile.
 BRAIN = ("typos.py", "functions.py", "equations.py", "graphs.py", "geo.py", "earth.py", "planets.py", "timers.py",
          "forecast.py", "music.py", "phone_brain.py", "geo_data/countries_50m.json", "geo_data/places_10m.json")
-VISUAL_FONTS = ("vendor/fonts/orbitron-latin.woff2",)
+VISUAL_FONTS = ("vendor/fonts/orbitron-latin.woff2", "vendor/fonts/sora-latin.woff2", "vendor/fonts/onest-latin.woff2")
 VISUAL_IMAGES = (
     "vendor/earth/blue_marble_5400.jpg", "vendor/earth/clouds_2048.jpg", "vendor/earth/night_lights_3600.jpg",
     "vendor/earth/earth_atmos_2048.jpg",
@@ -225,12 +240,91 @@ async def _handle_phone(websocket, computer_id: str) -> None:
         await _forget_phone(conn_id, tell_computer=True)
 
 
+# ---------- phone calls: a telephone company's audio stream <-> the computer placing the call ----------
+tel_bridges = {}     # bridgeId -> the computer's connection
+tel_streams = {}     # stream id -> (the telephone company's connection, bridgeId)
+TEL_PREFIX = "/tel/"
+TEL_MAX_STREAMS = 4           # per computer: one call at a time is normal, the rest is slack for a redial
+TEL_MAX_MESSAGE = 64 * 1024   # a stream's messages are small (a fraction of a second of sound each)
+
+
+async def _handle_tel_bridge(websocket, bridge_id: str) -> None:
+    if len(bridge_id) < 32 or len(bridge_id) > 128:
+        await websocket.close(1008, "bad bridgeId")
+        return
+    previous = tel_bridges.get(bridge_id)
+    if previous is not None:
+        await previous.close(1008, "replaced by a new connection")
+    tel_bridges[bridge_id] = websocket
+    await _send(websocket, {"type": "hello_ok"})
+    log.info("phone-call bridge online")
+    try:
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+            except (ValueError, TypeError):
+                continue
+            stream_ws, owner = tel_streams.get(str(data.get("id") or ""), (None, None))
+            if stream_ws is None or owner != bridge_id:
+                continue
+            if data.get("type") == "tel":
+                await _send(stream_ws, data.get("data"))
+            elif data.get("type") == "tel_close":
+                await stream_ws.close(1000, "closed by the computer")
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    finally:
+        if tel_bridges.get(bridge_id) is websocket:
+            del tel_bridges[bridge_id]
+            for stream_id, (stream_ws, owner) in list(tel_streams.items()):
+                if owner == bridge_id:   # the computer went: its calls can't be carried any more
+                    await stream_ws.close(1011, "computer offline")
+            log.info("phone-call bridge offline")
+
+
+async def _handle_tel_stream(websocket, bridge_id: str) -> None:
+    bridge = tel_bridges.get(bridge_id)
+    if bridge is None or sum(1 for _, owner in tel_streams.values() if owner == bridge_id) >= TEL_MAX_STREAMS:
+        await websocket.close(1011, "not available")
+        return
+    stream_id = _new_conn_id()
+    tel_streams[stream_id] = (websocket, bridge_id)
+    signature = websocket.request.headers.get("X-Twilio-Signature", "")
+    await _send(bridge, {"type": "tel_open", "id": stream_id, "signature": signature[:200]})
+    try:
+        async for message in websocket:
+            if not isinstance(message, str) or len(message) > TEL_MAX_MESSAGE:
+                continue
+            try:
+                data = json.loads(message)
+            except (ValueError, TypeError):
+                continue
+            current = tel_bridges.get(bridge_id)
+            if current is None:
+                break
+            await _send(current, {"type": "tel", "id": stream_id, "data": data})
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    finally:
+        tel_streams.pop(stream_id, None)
+        current = tel_bridges.get(bridge_id)
+        if current is not None:
+            await _send(current, {"type": "tel_closed", "id": stream_id})
+
+
 async def handler(websocket) -> None:
+    path = urlsplit(getattr(getattr(websocket, "request", None), "path", "") or "").path
+    if path.startswith(TEL_PREFIX):   # a telephone company delivering a call's audio: it speaks first, no hello
+        await _handle_tel_stream(websocket, path[len(TEL_PREFIX):].strip("/"))
+        return
     try:
         first = await asyncio.wait_for(websocket.recv(), timeout=15)
         data = json.loads(first)
     except (asyncio.TimeoutError, ValueError, TypeError, websockets.exceptions.ConnectionClosed):
         await websocket.close(1008, "expected a hello")
+        return
+    if data.get("type") == "hello" and data.get("role") == "tel":
+        await _handle_tel_bridge(websocket, str(data.get("bridgeId") or ""))
         return
     if data.get("type") != "hello" or data.get("role") not in ("computer", "phone"):
         await websocket.close(1008, "expected a hello")
@@ -388,7 +482,7 @@ async def _keepalive() -> None:
     or computer that's connected but simply not talking; a periodic ping is cheaper than losing the session."""
     while True:
         await asyncio.sleep(IDLE_PING_INTERVAL)
-        for ws in list(computers.values()) + list(phone_sockets.values()):
+        for ws in list(computers.values()) + list(phone_sockets.values()) + list(tel_bridges.values()):
             try:
                 await ws.ping()
             except websockets.exceptions.ConnectionClosed:

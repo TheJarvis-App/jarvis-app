@@ -456,7 +456,10 @@
   }
 
   function present(index) {
-    window.hideGlobe?.(); window.hidePlanet?.(); window.hideClock?.();   // one picture at a time: the newest is the one on screen
+    // one picture at a time: the newest is the one on screen (in the window, nav.js closes whatever else was open)
+    if (window.jarvisNav) { if ($('graphLayer').hidden && !window.jarvisNav.claim('graphs')) return; }
+    else { window.hideGlobe?.(); window.hidePlanet?.(); window.hideClock?.(); }
+    $('graphCard').classList.remove('is-empty');
     current = index;
     data = history[index];
     view = computeView(data);
@@ -530,12 +533,53 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     render(ctx, w, h, { t: 1, since: 2, time: 0, hover: null, data: d, view: computeView(d), compact: true });
   };
+  // The rail's Graphs button: the last graph again, or (before the first one) a few to ask for.
+  const FIRST_GRAPHS = ['Graph sine of x over x', 'Graph x squared minus 4', 'Graph e to the x', 'Graph sin x and cos x'];
+  window.openGraphs = function openGraphs() {
+    if (history.length) return window.reopenGraph('last');
+    if (window.jarvisNav && $('graphLayer').hidden && !window.jarvisNav.claim('graphs')) return false;
+    const card = $('graphCard');
+    let empty = card.querySelector('.graph-empty');
+    if (!empty) {
+      empty = document.createElement('div');
+      empty.className = 'graph-empty';
+      empty.innerHTML = '<p>Ask for any function and it is drawn here, with its roots, turning points and asymptotes. Every graph stays here to open again.</p><div class="graph-try" role="group" aria-label="Graphs to try"></div>';
+      const tries = empty.querySelector('.graph-try');
+      for (const say of FIRST_GRAPHS) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'ghost'; b.textContent = say;
+        b.addEventListener('click', () => {   // asked exactly as if typed: the answer opens the graph here
+          const input = document.getElementById('typeInput'), form = document.getElementById('typeForm');
+          if (!input || !form) return;
+          input.value = say;
+          form.requestSubmit();
+        });
+        tries.append(b);
+      }
+      card.querySelector('.graph-head').after(empty);
+    }
+    current = -1;
+    data = null;
+    cancelAnimationFrame(raf);
+    card.classList.add('is-empty');
+    $('graphKicker').textContent = 'Graphs';
+    $('graphTitle').textContent = 'No graphs yet';
+    $('graphNav').hidden = true;
+    $('graphFacts').replaceChildren();
+    $('graphLayer').hidden = false;
+    document.body.classList.add('scene-paused');
+    requestAnimationFrame(() => empty.querySelector('button')?.focus({ preventScroll: true }));
+    return true;
+  };
   window.hideGraph = function hideGraph() {
+    if (!$('graphLayer').hidden) window.jarvisNav?.release('graphs');
     $('graphLayer').hidden = true;
     document.body.classList.remove('scene-paused');
     cancelAnimationFrame(raf);
   };
   window.graphOpen = () => !$('graphLayer').hidden;
+  window.jarvisNav?.register('graphs', { open: () => window.openGraphs(), close: () => window.hideGraph(), isOpen: () => window.graphOpen(),
+    button: () => document.getElementById('navGraphs') });
 
   // Set up now if the page has already loaded (the phone app loads this on demand), else once it has.
   const whenReady = (fn) => (document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', fn) : fn());

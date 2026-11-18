@@ -168,7 +168,9 @@
   let lastInteractAt = -1e9;
 
   function present(index) {
-    window.hideGraph?.(); window.hidePlanet?.(); window.hideClock?.();   // one picture at a time: the newest is the one on screen
+    // one picture at a time: the newest is the one on screen (in the window, nav.js closes whatever else was open)
+    if (window.jarvisNav) { if ($('earthLayer').hidden && !window.jarvisNav.claim('globe')) return; }
+    else { window.hideGraph?.(); window.hidePlanet?.(); window.hideClock?.(); }
     current = index;
     data = prepare(history[index]);
     $('earthTitle').textContent = data.title || `${data.a.name} → ${data.b.name}`;
@@ -294,12 +296,14 @@
     return true;
   };
   window.hideGlobe = function hideGlobe() {
+    if (!$('earthLayer').hidden) window.jarvisNav?.release('globe');
     $('earthLayer').hidden = true;
     document.body.classList.remove('scene-paused');
     cancelAnimationFrame(raf);
     raf = 0;
   };
   window.globeOpen = () => !$('earthLayer').hidden;
+  window.jarvisNav?.register('globe', { open: () => window.reopenGlobe('last'), close: () => window.hideGlobe(), isOpen: () => window.globeOpen() });
   window.globeCount = () => history.length;
   window.__earthDebug = () => ({ elapsed, paused, manual, done: journeyDone, total: data && data._script.total, zoom: cam.zoom,
                                  phase: data && data._script.at(Math.min(elapsed, data._script.total)).phase, running: Boolean(raf), frames: framesDrawn, frameMs, plane: planeAt });

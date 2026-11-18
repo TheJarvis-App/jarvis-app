@@ -198,7 +198,9 @@
   const MAX_HISTORY = 40;
 
   function present(index) {
-    window.hideGraph?.(); window.hideGlobe?.(); window.hideClock?.();   // one picture at a time: the newest is the one on screen
+    // one picture at a time: the newest is the one on screen (in the window, nav.js closes whatever else was open)
+    if (window.jarvisNav) { if ($('planetLayer').hidden && !window.jarvisNav.claim('planet')) return; }
+    else { window.hideGraph?.(); window.hideGlobe?.(); window.hideClock?.(); }
     current = index;
     data = history[index];
     if (data.texture !== textureKey) {
@@ -252,11 +254,13 @@
     return true;
   };
   window.hidePlanet = function hidePlanet() {
+    if (!$('planetLayer').hidden) window.jarvisNav?.release('planet');
     $('planetLayer').hidden = true;
     document.body.classList.remove('scene-paused');
     cancelAnimationFrame(raf);
   };
   window.planetOpen = () => !$('planetLayer').hidden;
+  window.jarvisNav?.register('planet', { open: () => window.reopenPlanet('last'), close: () => window.hidePlanet(), isOpen: () => window.planetOpen() });
   window.planetThumbnail = function planetThumbnail(canvas, d) {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = canvas.clientWidth || 170, h = canvas.clientHeight || 96;

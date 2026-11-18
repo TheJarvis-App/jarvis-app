@@ -12,6 +12,13 @@ device token, a pairing code, or an encryption key, and every message it routes 
 (phone_crypto.py) — it only ever sees which computerId a connection belongs to, a value with no meaning on its
 own. Deploy your own only if you want to run that piece yourself instead of relying on the shared one.
 
+## Phone calls (PhoneLink)
+
+The relay also carries the live audio of a phone call Jarvis places (`/tel/<bridgeId>`, see `server.py`'s docstring
+and `PHONELINK.md`). It needs no configuration and holds no secret for it: redeploying a relay that predates
+PhoneLink is all it takes. A call's audio is not end-to-end encrypted (the telephone company is one end of it); it
+passes through in memory and is never stored.
+
 ## Render (recommended — genuinely free, no credit card)
 
 1. Install the CLI (`brew install render` on macOS; see <https://render.com/docs/cli> otherwise), then

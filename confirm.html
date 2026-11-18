@@ -5,31 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Jarvis</title>
 <style>
-  :root { color-scheme: dark; }
+  /* Jarvis's look (lit glass, as in the app): a dark sky, one card of glass, the one thing to press lit. */
+  @font-face { font-family: "Sora"; src: url("/vendor/fonts/sora-latin.woff2") format("woff2"); font-weight: 200 700; font-display: swap; }
+  @font-face { font-family: "Onest"; src: url("/vendor/fonts/onest-latin.woff2") format("woff2"); font-weight: 300 700; font-display: swap; }
+  :root { color-scheme: dark; --accent: 79 216 255; --ink: #03121c; --text: #f1f5fc; --muted: #aab6cc; --faint: #808da8; }
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100vh; padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
-    background: #0b0d12; color: #e8eaf0; font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--text); font: 16px/1.45 "Onest", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: radial-gradient(110% 50% at 50% -10%, rgb(var(--accent) / .16), transparent 64%),
+      radial-gradient(90% 46% at 100% -6%, rgb(165 139 255 / .12), transparent 66%), linear-gradient(180deg, #050a1d, #02040c 70%);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
   }
   .card {
-    width: 100%; max-width: 420px; background: #151822; border: 1px solid #262b3a; border-radius: 16px;
-    padding: 28px 24px; text-align: center;
+    position: relative; width: 100%; max-width: 420px; padding: 30px 24px 24px; text-align: center; border-radius: 28px;
+    background: linear-gradient(180deg, rgb(255 255 255 / .05), rgb(255 255 255 / .015)), rgb(12 16 30 / .96);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .14), inset 0 0 0 1px rgb(255 255 255 / .07), 0 40px 90px -30px rgb(0 0 0 / .9);
+    animation: arrive .6s cubic-bezier(.16, 1, .3, 1) both;
   }
-  h1 { font-size: 20px; margin: 0 0 6px; font-weight: 600; }
-  p { color: #9aa1b4; font-size: 15px; margin: 0 0 22px; }
+  @keyframes arrive { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+  h1 { font: 400 22px/1.25 "Sora", "Onest", system-ui, sans-serif; letter-spacing: -.02em; margin: 0 0 8px; text-wrap: balance; }
+  p { color: var(--muted); font-size: 15px; margin: 0 0 24px; }
   .actions { display: flex; flex-direction: column; gap: 10px; }
   button, .link-btn {
-    width: 100%; padding: 15px; border-radius: 10px; border: none; background: #4a63e8; color: white;
-    font-size: 16px; font-weight: 600; cursor: pointer; display: block; text-decoration: none;
-    box-sizing: border-box;
+    width: 100%; min-height: 52px; padding: 0 18px; border-radius: 15px; border: none; cursor: pointer; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; text-decoration: none; font: 600 16px/1 inherit;
+    color: var(--ink); background: linear-gradient(180deg, #a6ecff, rgb(var(--accent)) 60%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .5), 0 0 0 1px rgb(var(--accent) / .55), 0 12px 28px -12px rgb(var(--accent) / .85);
+    transition: transform .12s cubic-bezier(.16, 1, .3, 1), filter .2s;
   }
-  button:active, .link-btn:active { background: #3c52c4; }
-  button.secondary { background: #1e2330; color: #c6cad6; }
-  button.secondary:active { background: #262c3d; }
-  button:disabled { background: #2c3244; color: #6a7186; cursor: default; }
-  .status-icon { font-size: 40px; margin-bottom: 12px; }
-  .hint { font-size: 13px; color: #6a7186; margin-top: 16px; }
+  button:active, .link-btn:active { transform: scale(.98); filter: brightness(1.08); }
+  button.secondary { color: #dbe4f3; background: linear-gradient(180deg, rgb(255 255 255 / .09), rgb(255 255 255 / .04));
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), inset 0 1px 0 rgb(255 255 255 / .07); }
+  button:disabled { opacity: .45; cursor: default; transform: none; }
+  .status-icon { width: 64px; height: 64px; margin: 0 auto 16px; border-radius: 50%; display: grid; place-items: center; font-size: 28px;
+    color: rgb(var(--accent)); background: radial-gradient(circle, rgb(var(--accent) / .16), rgb(var(--accent) / .04) 70%);
+    box-shadow: inset 0 0 0 1px rgb(var(--accent) / .3), 0 0 40px -10px rgb(var(--accent) / .6); animation: pop .5s cubic-bezier(.34, 1.4, .64, 1) both; }
+  @keyframes pop { from { opacity: 0; transform: scale(.6); } }
+  .hint { font-size: 13px; color: var(--faint); margin: 16px 0 0; }
+  .hint:empty { display: none; }
+  @media (prefers-reduced-motion: reduce) { .card, .status-icon { animation: none; } button, .link-btn { transition: none; } }
 </style>
 </head>
 <body>
